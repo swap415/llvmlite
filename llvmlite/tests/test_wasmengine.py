@@ -272,3 +272,34 @@ class TestPublicAPI(unittest.TestCase):
             WasmRuntimeError,
         )
         self.assertTrue(callable(create_wasm_engine))
+
+
+_WASM_IR_FPADD = """\
+target triple = "wasm32-unknown-unknown"
+target datalayout = "e-m:e-p:32:32-i64:64-n32:64-S128"
+
+define double @fpadd(double %a, double %b) #0 {
+  %result = fadd double %a, %b
+  ret double %result
+}
+
+attributes #0 = { "wasm-export-name"="fpadd" }
+"""
+
+
+@needs_wasm_toolchain
+class TestWasmFloatingPoint(unittest.TestCase):
+
+    def setUp(self):
+        llvm.initialize_all_targets()
+        llvm.initialize_all_asmprinters()
+
+    def test_f64_add(self):
+        from llvmlite.binding.wasmengine import create_wasm_engine
+        mod = llvm.parse_assembly(_WASM_IR_FPADD)
+        mod.verify()
+        engine = create_wasm_engine(mod)
+        engine.finalize_object()
+        func = engine.get_function('fpadd')
+        result = func(1.5, 2.25)
+        self.assertAlmostEqual(result, 3.75)
