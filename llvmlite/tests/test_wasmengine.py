@@ -1,5 +1,6 @@
 import os
 import shutil
+import struct
 import unittest
 
 import llvmlite.binding as llvm
@@ -213,3 +214,48 @@ class TestWasmExecutionEngine(unittest.TestCase):
         engine.finalize_object()  # should be no-op
         func = engine.get_function('add')
         self.assertEqual(func(1, 2), 3)
+
+
+# LLVM IR: reads an i32 from memory address 0, adds 42, stores result at address 4
+_WASM_IR_MEMORY = """\
+target triple = "wasm32-unknown-unknown"
+target datalayout = "e-m:e-p:32:32-i64:64-n32:64-S128"
+
+define void @add42() #0 {
+  %ptr_in = inttoptr i32 0 to ptr
+  %val = load i32, ptr %ptr_in
+  %result = add i32 %val, 42
+  %ptr_out = inttoptr i32 4 to ptr
+  store i32 %result, ptr %ptr_out
+  ret void
+}
+
+attributes #0 = { "wasm-export-name"="add42" }
+"""
+
+
+@needs_wasm_toolchain
+class TestWasmMemory(unittest.TestCase):
+
+    def setUp(self):
+        llvm.initialize_all_targets()
+        llvm.initialize_all_asmprinters()
+
+    def test_memory_round_trip(self):
+        from llvmlite.binding.wasmengine import create_wasm_engine
+        mod = llvm.parse_assembly(_WASM_IR_MEMORY)
+        mod.verify()
+        engine = create_wasm_engine(mod)
+        engine.finalize_object()
+
+        # Write input value (100) at offset 0
+        engine.write_memory(0, struct.pack('<i', 100))
+
+        # Call function that reads offset 0, adds 42, writes to offset 4
+        func = engine.get_function('add42')
+        func()
+
+        # Read result from offset 4
+        result_bytes = engine.read_memory(4, 4)
+        result = struct.unpack('<i', result_bytes)[0]
+        self.assertEqual(result, 142)
