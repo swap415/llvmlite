@@ -15,4 +15,7 @@ from .analysis import *
 from .object_file import *
 from .context import *
 from .orcjit import *
+from .wasmengine import (create_wasm_engine, WasmExecutionEngine,
+                         WasmFunction, WasmToolNotFoundError,
+                         WasmRuntimeError)
 from .config import *

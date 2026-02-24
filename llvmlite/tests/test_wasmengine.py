@@ -259,3 +259,16 @@ class TestWasmMemory(unittest.TestCase):
         result_bytes = engine.read_memory(4, 4)
         result = struct.unpack('<i', result_bytes)[0]
         self.assertEqual(result, 142)
+
+
+class TestPublicAPI(unittest.TestCase):
+
+    def test_importable_from_binding(self):
+        from llvmlite.binding import (
+            create_wasm_engine,
+            WasmExecutionEngine,
+            WasmFunction,
+            WasmToolNotFoundError,
+            WasmRuntimeError,
+        )
+        self.assertTrue(callable(create_wasm_engine))
