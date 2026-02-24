@@ -116,3 +116,28 @@ class TestWasmtimeBackend(unittest.TestCase):
     def test_get_memory(self):
         mem = self.backend.get_memory()
         self.assertIsNotNone(mem)
+
+
+@needs_wasmtime
+class TestWasmFunction(unittest.TestCase):
+
+    def setUp(self):
+        from llvmlite.binding.wasmengine import WasmtimeBackend, WasmFunction
+        self.backend = WasmtimeBackend()
+        self.backend.load(_WASM_ADD_MODULE)
+
+    def test_callable(self):
+        from llvmlite.binding.wasmengine import WasmFunction
+        func = WasmFunction('add', self.backend)
+        result = func(10, 20)
+        self.assertEqual(result, 30)
+
+    def test_name(self):
+        from llvmlite.binding.wasmengine import WasmFunction
+        func = WasmFunction('add', self.backend)
+        self.assertEqual(func.name, 'add')
+
+    def test_unknown_function(self):
+        from llvmlite.binding.wasmengine import WasmFunction
+        with self.assertRaises(KeyError):
+            WasmFunction('nope', self.backend)

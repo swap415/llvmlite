@@ -113,6 +113,26 @@ class WasmtimeBackend:
         return list(self._exports.keys())
 
 
+class WasmFunction:
+
+    def __init__(self, name, backend):
+        export_names = backend.get_export_names()
+        if name not in export_names:
+            raise KeyError(f"No exported function named {name!r}")
+        self._name = name
+        self._backend = backend
+
+    @property
+    def name(self):
+        return self._name
+
+    def __call__(self, *args):
+        return self._backend.call(self._name, *args)
+
+    def __repr__(self):
+        return f"WasmFunction({self._name!r})"
+
+
 class EmscriptenBackend:
     def __init__(self):
         raise NotImplementedError(
