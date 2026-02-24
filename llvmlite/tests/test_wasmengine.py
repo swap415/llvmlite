@@ -2,6 +2,7 @@ import os
 import shutil
 import unittest
 
+import llvmlite.binding as llvm
 from llvmlite.binding.wasmengine import (
     WasmToolNotFoundError,
     WasmRuntimeError,
@@ -141,3 +142,74 @@ class TestWasmFunction(unittest.TestCase):
         from llvmlite.binding.wasmengine import WasmFunction
         with self.assertRaises(KeyError):
             WasmFunction('nope', self.backend)
+
+
+needs_wasm_toolchain = unittest.skipUnless(
+    shutil.which('wasm-ld') and _has_wasmtime,
+    "requires wasm-ld and wasmtime"
+)
+
+# LLVM IR for a simple i32 add function, targeting wasm32
+_WASM_IR_ADD = """\
+target triple = "wasm32-unknown-unknown"
+target datalayout = "e-m:e-p:32:32-i64:64-n32:64-S128"
+
+define i32 @add(i32 %a, i32 %b) #0 {
+  %result = add i32 %a, %b
+  ret i32 %result
+}
+
+attributes #0 = { "wasm-export-name"="add" }
+"""
+
+
+@needs_wasm_toolchain
+class TestWasmExecutionEngine(unittest.TestCase):
+
+    def setUp(self):
+        llvm.initialize_all_targets()
+        llvm.initialize_all_asmprinters()
+
+    def test_compile_and_call(self):
+        from llvmlite.binding.wasmengine import create_wasm_engine
+        mod = llvm.parse_assembly(_WASM_IR_ADD)
+        mod.verify()
+        engine = create_wasm_engine(mod)
+        engine.finalize_object()
+        func = engine.get_function('add')
+        result = func(7, 8)
+        self.assertEqual(result, 15)
+
+    def test_get_wasm_bytes(self):
+        from llvmlite.binding.wasmengine import create_wasm_engine
+        mod = llvm.parse_assembly(_WASM_IR_ADD)
+        mod.verify()
+        engine = create_wasm_engine(mod)
+        engine.finalize_object()
+        wasm_bytes = engine.get_wasm_bytes()
+        self.assertEqual(wasm_bytes[:4], b'\x00asm')
+
+    def test_finalize_before_get_function(self):
+        from llvmlite.binding.wasmengine import create_wasm_engine
+        mod = llvm.parse_assembly(_WASM_IR_ADD)
+        engine = create_wasm_engine(mod)
+        with self.assertRaises(RuntimeError):
+            engine.get_function('add')
+
+    def test_add_module_after_finalize(self):
+        from llvmlite.binding.wasmengine import create_wasm_engine
+        mod = llvm.parse_assembly(_WASM_IR_ADD)
+        engine = create_wasm_engine(mod)
+        engine.finalize_object()
+        mod2 = llvm.parse_assembly(_WASM_IR_ADD)
+        with self.assertRaises(RuntimeError):
+            engine.add_module(mod2)
+
+    def test_finalize_idempotent(self):
+        from llvmlite.binding.wasmengine import create_wasm_engine
+        mod = llvm.parse_assembly(_WASM_IR_ADD)
+        engine = create_wasm_engine(mod)
+        engine.finalize_object()
+        engine.finalize_object()  # should be no-op
+        func = engine.get_function('add')
+        self.assertEqual(func(1, 2), 3)

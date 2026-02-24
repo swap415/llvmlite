@@ -1,7 +1,10 @@
 import ctypes
 import os
 import shutil
+import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 
 class WasmToolNotFoundError(RuntimeError):
@@ -131,6 +134,132 @@ class WasmFunction:
 
     def __repr__(self):
         return f"WasmFunction({self._name!r})"
+
+
+def _create_wasm_target_machine(triple='wasm32-unknown-unknown'):
+    from llvmlite.binding import targets
+    target = targets.Target.from_triple(triple)
+    return target.create_target_machine(
+        cpu='generic',
+        features='',
+        opt=2,
+        reloc='default',
+        codemodel='default',
+    )
+
+
+def _link_wasm(object_files, wasm_ld_path, output_path):
+    cmd = [
+        wasm_ld_path,
+        '--no-entry',
+        '--export-all',
+        '--allow-undefined',
+        '-o', str(output_path),
+    ] + [str(f) for f in object_files]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"wasm-ld failed (exit code {result.returncode}):\n"
+            f"{result.stderr}"
+        )
+
+
+def create_wasm_engine(module, target_machine=None, wasm_ld_path=None,
+                       backend=None):
+    if target_machine is None:
+        target_machine = _create_wasm_target_machine()
+    if wasm_ld_path is None:
+        wasm_ld_path = _find_wasm_ld()
+    engine = WasmExecutionEngine(
+        target_machine=target_machine,
+        wasm_ld_path=wasm_ld_path,
+        backend=_detect_backend(backend),
+    )
+    engine.add_module(module)
+    return engine
+
+
+class WasmExecutionEngine:
+
+    def __init__(self, target_machine, wasm_ld_path, backend):
+        self._target_machine = target_machine
+        self._wasm_ld_path = wasm_ld_path
+        self._backend = backend
+        self._modules = []
+        self._finalized = False
+        self._wasm_bytes = None
+
+    def add_module(self, module):
+        if self._finalized:
+            raise RuntimeError(
+                "Cannot add modules after finalize_object(). "
+                "Create a new engine instead."
+            )
+        self._modules.append(module)
+
+    def remove_module(self, module):
+        if self._finalized:
+            raise RuntimeError(
+                "Cannot remove modules after finalize_object()."
+            )
+        self._modules.remove(module)
+
+    def finalize_object(self):
+        if self._finalized:
+            return
+        if not self._modules:
+            raise RuntimeError("No modules to compile")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+            object_files = []
+            for i, mod in enumerate(self._modules):
+                obj_bytes = self._target_machine.emit_object(mod)
+                obj_path = tmpdir / f"module_{i}.o"
+                obj_path.write_bytes(obj_bytes)
+                object_files.append(obj_path)
+
+            wasm_path = tmpdir / "output.wasm"
+            _link_wasm(object_files, self._wasm_ld_path, wasm_path)
+            self._wasm_bytes = wasm_path.read_bytes()
+
+        self._backend.load(self._wasm_bytes)
+        self._finalized = True
+
+    def get_function(self, name):
+        if not self._finalized:
+            raise RuntimeError(
+                "Must call finalize_object() before get_function()"
+            )
+        return WasmFunction(name, self._backend)
+
+    def get_wasm_bytes(self):
+        if not self._finalized:
+            raise RuntimeError(
+                "Must call finalize_object() before get_wasm_bytes()"
+            )
+        return self._wasm_bytes
+
+    def get_memory(self):
+        if not self._finalized:
+            raise RuntimeError(
+                "Must call finalize_object() before get_memory()"
+            )
+        return self._backend.get_memory()
+
+    def write_memory(self, offset, data):
+        if not self._finalized:
+            raise RuntimeError(
+                "Must call finalize_object() before write_memory()"
+            )
+        self._backend.write_memory(offset, data)
+
+    def read_memory(self, offset, size):
+        if not self._finalized:
+            raise RuntimeError(
+                "Must call finalize_object() before read_memory()"
+            )
+        return self._backend.read_memory(offset, size)
 
 
 class EmscriptenBackend:
