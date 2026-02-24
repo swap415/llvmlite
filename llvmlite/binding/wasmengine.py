@@ -8,14 +8,17 @@ from pathlib import Path
 
 
 class WasmToolNotFoundError(RuntimeError):
+    """Raised when wasm-ld cannot be found."""
     pass
 
 
 class WasmRuntimeError(RuntimeError):
+    """Raised when a WASM runtime trap occurs during execution."""
     pass
 
 
 def _find_wasm_ld(wasm_ld_path=None, _which=shutil.which):
+    """Locate wasm-ld: explicit path > WASM_LD env var > PATH lookup."""
     if wasm_ld_path is not None:
         return wasm_ld_path
     env = os.environ.get('WASM_LD')
@@ -50,7 +53,7 @@ class WasmtimeBackend:
         except ImportError:
             raise ImportError(
                 "wasmtime package is required for WASM execution on native "
-                "platforms. Install it with: pip install wasmtime"
+                "platforms. Install the wasmtime package."
             )
         self._engine = wasmtime.Engine()
         self._store = wasmtime.Store(self._engine)
@@ -71,13 +74,17 @@ class WasmtimeBackend:
             )
 
     def call(self, name, *args):
+        """Call an exported WASM function by name."""
         func = self._exports.get(name)
         if func is None:
             raise KeyError(f"No exported function named {name!r}")
         import wasmtime
         if not isinstance(func, wasmtime.Func):
             raise KeyError(f"{name!r} is not a function export")
-        return func(self._store, *args)
+        try:
+            return func(self._store, *args)
+        except wasmtime.WasmtimeError as e:
+            raise WasmRuntimeError(str(e)) from e
 
     def get_memory(self):
         import wasmtime
@@ -95,8 +102,9 @@ class WasmtimeBackend:
         return base, mem.data_len(self._store)
 
     def write_memory(self, offset, data):
+        """Write bytes into WASM linear memory at offset."""
         base, size = self._memory_base()
-        if offset + len(data) > size:
+        if offset < 0 or offset + len(data) > size:
             raise IndexError(
                 f"Write at offset {offset} with length {len(data)} "
                 f"exceeds memory size {size}"
@@ -104,8 +112,9 @@ class WasmtimeBackend:
         ctypes.memmove(base + offset, data, len(data))
 
     def read_memory(self, offset, size):
+        """Read bytes from WASM linear memory at offset."""
         base, mem_size = self._memory_base()
-        if offset + size > mem_size:
+        if offset < 0 or offset + size > mem_size:
             raise IndexError(
                 f"Read at offset {offset} with length {size} "
                 f"exceeds memory size {mem_size}"
@@ -117,6 +126,7 @@ class WasmtimeBackend:
 
 
 class WasmFunction:
+    """A callable wrapper around an exported WASM function."""
 
     def __init__(self, name, backend):
         export_names = backend.get_export_names()
@@ -127,9 +137,11 @@ class WasmFunction:
 
     @property
     def name(self):
+        """The export name of this function."""
         return self._name
 
     def __call__(self, *args):
+        """Call the WASM function with the given arguments."""
         return self._backend.call(self._name, *args)
 
     def __repr__(self):
@@ -166,6 +178,14 @@ def _link_wasm(object_files, wasm_ld_path, output_path):
 
 def create_wasm_engine(module, target_machine=None, wasm_ld_path=None,
                        backend=None):
+    """
+    Create a WASM execution engine from the given *module*.
+
+    *target_machine* is a TargetMachine for wasm32/64 (auto-created if None).
+    *wasm_ld_path* is the path to wasm-ld (auto-detected if None).
+    *backend* selects the runtime: 'wasmtime', 'emscripten', or None
+    (auto-detect).
+    """
     if target_machine is None:
         target_machine = _create_wasm_target_machine()
     if wasm_ld_path is None:
@@ -180,6 +200,7 @@ def create_wasm_engine(module, target_machine=None, wasm_ld_path=None,
 
 
 class WasmExecutionEngine:
+    """An execution engine that compiles LLVM IR to WebAssembly and runs it."""
 
     def __init__(self, target_machine, wasm_ld_path, backend):
         self._target_machine = target_machine
@@ -190,6 +211,7 @@ class WasmExecutionEngine:
         self._wasm_bytes = None
 
     def add_module(self, module):
+        """Add an IR module for compilation."""
         if self._finalized:
             raise RuntimeError(
                 "Cannot add modules after finalize_object(). "
@@ -198,6 +220,7 @@ class WasmExecutionEngine:
         self._modules.append(module)
 
     def remove_module(self, module):
+        """Remove a previously added module."""
         if self._finalized:
             raise RuntimeError(
                 "Cannot remove modules after finalize_object()."
@@ -205,6 +228,7 @@ class WasmExecutionEngine:
         self._modules.remove(module)
 
     def finalize_object(self):
+        """Compile all modules: emit object code, link with wasm-ld, load."""
         if self._finalized:
             return
         if not self._modules:
@@ -227,6 +251,7 @@ class WasmExecutionEngine:
         self._finalized = True
 
     def get_function(self, name):
+        """Return a callable WasmFunction for the named export."""
         if not self._finalized:
             raise RuntimeError(
                 "Must call finalize_object() before get_function()"
@@ -234,6 +259,7 @@ class WasmExecutionEngine:
         return WasmFunction(name, self._backend)
 
     def get_wasm_bytes(self):
+        """Return the linked .wasm binary as bytes."""
         if not self._finalized:
             raise RuntimeError(
                 "Must call finalize_object() before get_wasm_bytes()"
