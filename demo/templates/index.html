@@ -2,468 +2,198 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>llvmlite WASM Engine Demo</title>
+<title>llvmlite wasm</title>
 <style>
-  :root {
-    --bg: #0a0a0a;
-    --surface: #141414;
-    --border: #252525;
-    --text: #e0e0e0;
-    --text-dim: #707070;
-    --accent: #4a9eff;
-    --accent-dim: #1a3a5c;
-    --green: #4ae04a;
-    --red: #e04a4a;
-    --mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
-  }
-
   * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  body {
-    font-family: var(--mono);
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.5;
-    font-size: 13px;
-  }
-
-  header {
-    border-bottom: 1px solid var(--border);
-    padding: 16px 24px;
-    display: flex;
-    align-items: baseline;
-    gap: 16px;
-  }
-
-  header h1 {
-    font-size: 16px;
-    font-weight: 500;
-    color: var(--accent);
-  }
-
-  header span {
-    color: var(--text-dim);
-    font-size: 12px;
-  }
-
-  .tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .tab {
-    padding: 10px 24px;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    color: var(--text-dim);
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    transition: all 0.15s;
-  }
-
-  .tab:hover { color: var(--text); }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-
-  .panel { display: none; padding: 24px; }
-  .panel.active { display: block; }
-
-  /* Playground */
-  .playground {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    max-width: 1400px;
-  }
-
-  .editor-section, .output-section {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-dim);
-  }
-
-  textarea {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: 12px;
-    padding: 12px;
-    border-radius: 4px;
-    resize: vertical;
-    outline: none;
-    line-height: 1.6;
-  }
-
-  textarea:focus { border-color: var(--accent); }
-
-  #ir-editor { min-height: 360px; }
-
-  .controls {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-
-  input[type="text"] {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: 12px;
-    padding: 6px 10px;
-    border-radius: 4px;
-    outline: none;
-    width: 120px;
-  }
-
-  input:focus { border-color: var(--accent); }
-
-  button {
-    background: var(--accent-dim);
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    font-family: var(--mono);
-    font-size: 12px;
-    padding: 6px 16px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-
-  button:hover { background: var(--accent); color: var(--bg); }
-  button:disabled { opacity: 0.4; cursor: not-allowed; }
-
-  .result-box {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 12px;
-    min-height: 200px;
-    overflow: auto;
-    white-space: pre-wrap;
-    font-size: 12px;
-  }
-
-  .stat { color: var(--text-dim); }
-  .stat b { color: var(--text); font-weight: 500; }
-  .ok { color: var(--green); }
-  .err { color: var(--red); }
-
-  /* Browser demo */
-  .browser-demo {
-    max-width: 900px;
-  }
-
-  .example-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
-    margin-top: 16px;
-  }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .card h3 {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--accent);
-  }
-
-  .card p {
-    color: var(--text-dim);
-    font-size: 12px;
-  }
-
-  .card-meta {
-    font-size: 11px;
-    color: var(--text-dim);
-  }
-
-  .card-result {
-    background: var(--bg);
-    border-radius: 4px;
-    padding: 10px;
-    font-size: 12px;
-    min-height: 60px;
-  }
-
-  .card button {
-    align-self: flex-start;
-  }
-
-  .pipeline {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 16px 0;
-    flex-wrap: wrap;
-  }
-
-  .pipeline-step {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 6px 12px;
-    font-size: 11px;
-    color: var(--text-dim);
-  }
-
-  .pipeline-step.done {
-    border-color: var(--green);
-    color: var(--green);
-  }
-
-  .pipeline-arrow { color: var(--text-dim); }
-
-  .examples-preload {
-    margin: 12px 0;
-    padding: 12px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-size: 12px;
-    color: var(--text-dim);
-  }
-
-  @media (max-width: 800px) {
-    .playground { grid-template-columns: 1fr; }
-  }
+  body { font-family: 'SF Mono', Menlo, monospace; font-size: 13px; color: #111; padding: 48px 24px; max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 13px; font-weight: 400; color: #999; margin-bottom: 24px; }
+  textarea { width: 100%; min-height: 200px; border: 1px solid #ddd; border-radius: 4px; padding: 12px; font: inherit; font-size: 12px; line-height: 1.6; outline: none; resize: vertical; }
+  textarea:focus { border-color: #999; }
+  .bar { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+  button { border: 1px solid #ccc; border-radius: 4px; padding: 5px 14px; font: inherit; font-size: 12px; cursor: pointer; background: #fff; }
+  button:hover { border-color: #999; }
+  button:disabled { opacity: .4; }
+  .ex { color: #999; font-size: 11px; cursor: pointer; }
+  .ex:hover { color: #111; }
+  #out { margin-top: 16px; white-space: pre-wrap; font-size: 12px; line-height: 1.6; min-height: 40px; }
+  .ok { color: #16a34a; }
+  .err { color: #dc2626; }
+  .dim { color: #999; }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>llvmlite wasm engine</h1>
-  <span>LLVM IR &rarr; WebAssembly &rarr; Execute</span>
-</header>
+<h1>llvmlite &mdash; LLVM IR &rarr; WebAssembly &rarr; browser</h1>
 
-<div class="tabs">
-  <div class="tab active" data-panel="playground">Interactive Playground</div>
-  <div class="tab" data-panel="browser">Browser WASM Demo</div>
-</div>
-
-<!-- Panel 1: Interactive Playground -->
-<div id="playground" class="panel active">
-  <div class="playground">
-    <div class="editor-section">
-      <label>LLVM IR</label>
-      <textarea id="ir-editor">target triple = "wasm32-unknown-unknown"
+<textarea id="ir" spellcheck="false">target triple = "wasm32-unknown-unknown"
 target datalayout = "e-m:e-p:32:32-i64:64-n32:64-S128"
 
 define i32 @add(i32 %a, i32 %b) #0 {
-  %result = add i32 %a, %b
-  ret i32 %result
+  %r = add i32 %a, %b
+  ret i32 %r
 }
 
 attributes #0 = { "wasm-export-name"="add" }</textarea>
 
-      <div class="controls">
-        <label>function</label>
-        <input type="text" id="func-name" value="add" placeholder="function">
-        <label>args</label>
-        <input type="text" id="func-args" value="7, 8" placeholder="1, 2, 3">
-        <button id="btn-compile" onclick="compileAndRun()">compile & run</button>
-      </div>
-
-      <div class="controls" style="gap: 16px">
-        <button onclick="loadExample('add')" style="border-color: var(--border); background: transparent; color: var(--text-dim)">ex: add</button>
-        <button onclick="loadExample('fpadd')" style="border-color: var(--border); background: transparent; color: var(--text-dim)">ex: fpadd</button>
-        <button onclick="loadExample('factorial')" style="border-color: var(--border); background: transparent; color: var(--text-dim)">ex: factorial</button>
-      </div>
-    </div>
-
-    <div class="output-section">
-      <label>Output</label>
-      <div id="output" class="result-box"><span class="stat">ready. paste LLVM IR and click compile & run.</span></div>
-    </div>
-  </div>
+<div class="bar">
+  <button id="btn" onclick="go()">compile & run</button>
+  <span class="ex" onclick="load('add')">add</span>
+  <span class="ex" onclick="load('factorial')">factorial</span>
+  <span class="ex" onclick="load('memory')">memory</span>
+  <span class="ex" onclick="load('simd')">simd</span>
 </div>
 
-<!-- Panel 2: Browser WASM Demo -->
-<div id="browser" class="panel">
-  <div class="browser-demo">
-    <p style="color: var(--text-dim); margin-bottom: 8px;">
-      These WASM modules were compiled from LLVM IR by llvmlite's WASM engine on the server.
-      They run <b style="color: var(--text)">natively in your browser</b> via the WebAssembly JavaScript API &mdash; no Python, no server round-trip.
-    </p>
-
-    <div class="pipeline">
-      <div class="pipeline-step">LLVM IR</div>
-      <span class="pipeline-arrow">&rarr;</span>
-      <div class="pipeline-step">emit_object()</div>
-      <span class="pipeline-arrow">&rarr;</span>
-      <div class="pipeline-step">wasm-ld</div>
-      <span class="pipeline-arrow">&rarr;</span>
-      <div class="pipeline-step">.wasm binary</div>
-      <span class="pipeline-arrow">&rarr;</span>
-      <div class="pipeline-step" style="border-color: var(--accent); color: var(--accent)">WebAssembly.instantiate()</div>
-    </div>
-
-    <div class="example-cards" id="example-cards"></div>
-  </div>
-</div>
+<div id="out"></div>
 
 <script>
-// Tab switching
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    tab.classList.add('active');
-    document.getElementById(tab.dataset.panel).classList.add('active');
-  });
-});
+const examples = {
+  add: {
+    ir: `target triple = "wasm32-unknown-unknown"
+target datalayout = "e-m:e-p:32:32-i64:64-n32:64-S128"
 
-// Examples data from server
-const EXAMPLES = {{ examples | tojson }};
-
-// Playground examples
-const EXAMPLE_DEFAULTS = {
-  add:       { func: 'add',       args: '7, 8' },
-  fpadd:     { func: 'fpadd',     args: '3.14, 2.71' },
-  factorial: { func: 'factorial',  args: '10' },
-};
-
-function loadExample(name) {
-  const ex = EXAMPLES[name];
-  if (!ex) return;
-  document.getElementById('ir-editor').value = ex.ir;
-  document.getElementById('func-name').value = EXAMPLE_DEFAULTS[name].func;
-  document.getElementById('func-args').value = EXAMPLE_DEFAULTS[name].args;
+define i32 @add(i32 %a, i32 %b) #0 {
+  %r = add i32 %a, %b
+  ret i32 %r
 }
 
-// Compile & Run
-async function compileAndRun() {
-  const btn = document.getElementById('btn-compile');
-  const output = document.getElementById('output');
-  const ir = document.getElementById('ir-editor').value;
-  const funcName = document.getElementById('func-name').value.trim();
-  const argsStr = document.getElementById('func-args').value.trim();
+attributes #0 = { "wasm-export-name"="add" }`,
+    func: 'add', args: [7, 8],
+  },
+  factorial: {
+    ir: `target triple = "wasm32-unknown-unknown"
+target datalayout = "e-m:e-p:32:32-i64:64-n32:64-S128"
 
-  const args = argsStr ? argsStr.split(',').map(s => {
-    s = s.trim();
-    return s.includes('.') ? parseFloat(s) : parseInt(s, 10);
-  }) : [];
+define i32 @factorial(i32 %n) #0 {
+entry:
+  %cmp = icmp sle i32 %n, 1
+  br i1 %cmp, label %base, label %recurse
+base:
+  ret i32 1
+recurse:
+  %n1 = sub i32 %n, 1
+  %r = call i32 @factorial(i32 %n1)
+  %result = mul i32 %n, %r
+  ret i32 %result
+}
+
+attributes #0 = { "wasm-export-name"="factorial" }`,
+    func: 'factorial', args: [10],
+  },
+  memory: {
+    ir: `target triple = "wasm32-unknown-unknown"
+target datalayout = "e-m:e-p:32:32-i64:64-n32:64-S128"
+
+@buf = global [4 x i32] [i32 10, i32 20, i32 30, i32 40]
+
+define i32 @sum_buf() #0 {
+  %p0 = getelementptr [4 x i32], ptr @buf, i32 0, i32 0
+  %v0 = load i32, ptr %p0
+  %p1 = getelementptr [4 x i32], ptr @buf, i32 0, i32 1
+  %v1 = load i32, ptr %p1
+  %p2 = getelementptr [4 x i32], ptr @buf, i32 0, i32 2
+  %v2 = load i32, ptr %p2
+  %p3 = getelementptr [4 x i32], ptr @buf, i32 0, i32 3
+  %v3 = load i32, ptr %p3
+  %s01 = add i32 %v0, %v1
+  %s012 = add i32 %s01, %v2
+  %r = add i32 %s012, %v3
+  ret i32 %r
+}
+
+attributes #0 = { "wasm-export-name"="sum_buf" }`,
+    func: 'sum_buf', args: [],
+  },
+  simd: {
+    ir: `target triple = "wasm32-unknown-unknown"
+target datalayout = "e-m:e-p:32:32-i64:64-n32:64-S128"
+
+define i32 @dot4(i32 %a0, i32 %a1, i32 %a2, i32 %a3,
+                 i32 %b0, i32 %b1, i32 %b2, i32 %b3) #0 {
+  %va0 = insertelement <4 x i32> undef, i32 %a0, i32 0
+  %va1 = insertelement <4 x i32> %va0, i32 %a1, i32 1
+  %va2 = insertelement <4 x i32> %va1, i32 %a2, i32 2
+  %va  = insertelement <4 x i32> %va2, i32 %a3, i32 3
+  %vb0 = insertelement <4 x i32> undef, i32 %b0, i32 0
+  %vb1 = insertelement <4 x i32> %vb0, i32 %b1, i32 1
+  %vb2 = insertelement <4 x i32> %vb1, i32 %b2, i32 2
+  %vb  = insertelement <4 x i32> %vb2, i32 %b3, i32 3
+  %prod = mul <4 x i32> %va, %vb
+  %e0 = extractelement <4 x i32> %prod, i32 0
+  %e1 = extractelement <4 x i32> %prod, i32 1
+  %e2 = extractelement <4 x i32> %prod, i32 2
+  %e3 = extractelement <4 x i32> %prod, i32 3
+  %s01 = add i32 %e0, %e1
+  %s012 = add i32 %s01, %e2
+  %r = add i32 %s012, %e3
+  ret i32 %r
+}
+
+attributes #0 = { "wasm-export-name"="dot4" "target-features"="+simd128" }`,
+    func: 'dot4', args: [1,2,3,4,5,6,7,8],
+  },
+};
+
+function load(name) {
+  const ex = examples[name];
+  document.getElementById('ir').value = ex.ir;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+async function go() {
+  const btn = document.getElementById('btn');
+  const out = document.getElementById('out');
+  const ir = document.getElementById('ir').value;
 
   btn.disabled = true;
-  output.innerHTML = '<span class="stat">compiling...</span>';
+  out.innerHTML = '<span class="dim">compiling...</span>';
+
+  // find which example matches (for func/args)
+  let func = '', args = [];
+  for (const ex of Object.values(examples)) {
+    if (ir.includes(`@${ex.func}(`)) { func = ex.func; args = ex.args; break; }
+  }
 
   try {
     const resp = await fetch('/api/compile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ir, function: funcName, args }),
+      body: JSON.stringify({ ir }),
     });
-    const data = await resp.json();
+    const d = await resp.json();
+    if (!d.ok) { out.innerHTML = `<span class="err">${esc(d.error)}</span>`; return; }
 
-    if (data.ok) {
-      let html = '';
-      html += `<span class="ok">compiled successfully</span>\n\n`;
-      html += `<span class="stat">wasm size:    <b>${data.wasm_size} bytes</b></span>\n`;
-      html += `<span class="stat">compile time: <b>${data.compile_ms} ms</b></span>\n`;
-      if (funcName) {
-        html += `<span class="stat">exec time:    <b>${data.exec_ms} ms</b></span>\n`;
-        html += `\n<span class="stat">call:</span>  ${funcName}(${args.join(', ')})\n`;
-        html += `<span class="ok">result: <b style="font-size:16px">${data.result}</b></span>\n`;
-      }
-      output.innerHTML = html;
-    } else {
-      output.innerHTML = `<span class="err">error</span>\n\n${escHtml(data.error)}`;
+    let log = '';
+    const ln = s => { log += s + '\n'; };
+
+    // load wasm in browser
+    const bytes = Uint8Array.from(atob(d.wasm), c => c.charCodeAt(0));
+    ln(`<span class="dim">compiled ${d.size} bytes of wasm</span>`);
+
+    const valid = WebAssembly.validate(bytes);
+    ln(`<span class="dim">WebAssembly.validate: </span><span class="${valid ? 'ok' : 'err'}">${valid}</span>`);
+    if (!valid) { out.innerHTML = log; return; }
+
+    const { instance } = await WebAssembly.instantiate(bytes);
+    const exports = Object.keys(instance.exports).filter(k => typeof instance.exports[k] === 'function' && !k.startsWith('__'));
+    ln(`<span class="dim">exports: ${exports.join(', ')}</span>`);
+
+    if (func && instance.exports[func]) {
+      const result = instance.exports[func](...args);
+      ln(`\n<span class="ok">${func}(${args.join(', ')}) = ${result}</span>`);
     }
+
+    out.innerHTML = log;
   } catch (e) {
-    output.innerHTML = `<span class="err">network error</span>\n\n${escHtml(e.message)}`;
+    out.innerHTML = `<span class="err">${esc(e.message)}</span>`;
   } finally {
     btn.disabled = false;
   }
 }
 
-// Browser WASM demo
-function buildExampleCards() {
-  const container = document.getElementById('example-cards');
-  for (const [name, ex] of Object.entries(EXAMPLES)) {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      <h3>${escHtml(name)}</h3>
-      <p>${escHtml(ex.description)}</p>
-      <div class="card-meta">${ex.wasm_size} bytes of WASM</div>
-      <button onclick="runBrowserWasm('${name}')">run in browser</button>
-      <div class="card-result" id="card-result-${name}">
-        <span class="stat">${escHtml(ex.function)}(${ex.args.join(', ')}) = ?</span>
-      </div>
-    `;
-    container.appendChild(card);
-  }
-}
-
-async function runBrowserWasm(name) {
-  const ex = EXAMPLES[name];
-  const el = document.getElementById(`card-result-${name}`);
-  el.innerHTML = '<span class="stat">loading wasm...</span>';
-
-  try {
-    // Decode base64 WASM
-    const wasmBytes = Uint8Array.from(atob(ex.wasm_b64), c => c.charCodeAt(0));
-
-    const t0 = performance.now();
-    const { instance } = await WebAssembly.instantiate(wasmBytes);
-    const loadMs = (performance.now() - t0).toFixed(2);
-
-    const func = instance.exports[ex.function];
-    if (!func) {
-      el.innerHTML = `<span class="err">export '${ex.function}' not found</span>`;
-      return;
-    }
-
-    const t1 = performance.now();
-    const result = func(...ex.args);
-    const execMs = (performance.now() - t1).toFixed(4);
-
-    let html = '';
-    html += `<span class="ok">executed in browser</span>\n`;
-    html += `<span class="stat">load:   <b>${loadMs} ms</b></span>\n`;
-    html += `<span class="stat">exec:   <b>${execMs} ms</b></span>\n`;
-    html += `\n<span class="stat">call:</span>  ${ex.function}(${ex.args.join(', ')})\n`;
-    html += `<span class="ok">result: <b style="font-size:16px">${result}</b></span>`;
-    el.innerHTML = html;
-  } catch (e) {
-    el.innerHTML = `<span class="err">error: ${escHtml(e.message)}</span>`;
-  }
-}
-
-function escHtml(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
-
-// Keyboard shortcut
-document.getElementById('ir-editor').addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-    e.preventDefault();
-    compileAndRun();
-  }
+document.getElementById('ir').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); go(); }
 });
-
-buildExampleCards();
 </script>
 </body>
 </html>
