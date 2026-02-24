@@ -148,12 +148,12 @@ class WasmFunction:
         return f"WasmFunction({self._name!r})"
 
 
-def _create_wasm_target_machine(triple='wasm32-unknown-unknown'):
+def _create_wasm_target_machine(triple='wasm32-unknown-unknown', features=''):
     from llvmlite.binding import targets
     target = targets.Target.from_triple(triple)
     return target.create_target_machine(
         cpu='generic',
-        features='',
+        features=features,
         opt=2,
         reloc='default',
         codemodel='default',
