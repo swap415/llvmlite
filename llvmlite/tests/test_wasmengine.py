@@ -3,6 +3,7 @@ import shutil
 import struct
 import unittest
 
+from llvmlite import ir
 import llvmlite.binding as llvm
 from llvmlite.binding.wasmengine import (
     WasmToolNotFoundError,
@@ -303,3 +304,44 @@ class TestWasmFloatingPoint(unittest.TestCase):
         func = engine.get_function('fpadd')
         result = func(1.5, 2.25)
         self.assertAlmostEqual(result, 3.75)
+
+
+@needs_wasm_toolchain
+class TestWasmIRRoundTrip(unittest.TestCase):
+
+    def setUp(self):
+        llvm.initialize_all_targets()
+        llvm.initialize_all_asmprinters()
+
+    def test_ir_builder_to_wasm(self):
+        from llvmlite.binding.wasmengine import create_wasm_engine
+
+        # Build IR programmatically
+        module = ir.Module(name="test_roundtrip")
+        module.triple = "wasm32-unknown-unknown"
+        module.data_layout = "e-m:e-p:32:32-i64:64-n32:64-S128"
+
+        func_type = ir.FunctionType(ir.IntType(32),
+                                    [ir.IntType(32), ir.IntType(32)])
+        func = ir.Function(module, func_type, name="multiply")
+        block = func.append_basic_block(name="entry")
+        builder = ir.IRBuilder(block)
+        result = builder.mul(func.args[0], func.args[1])
+        builder.ret(result)
+
+        # llvmlite's ir module doesn't support arbitrary string attributes,
+        # so we inject the wasm-export-name attribute into the IR text
+        llvm_ir = str(module)
+        llvm_ir = llvm_ir.replace(
+            'define i32 @"multiply"(i32 %".1", i32 %".2")\n',
+            'define i32 @"multiply"(i32 %".1", i32 %".2") #0\n',
+        )
+        llvm_ir += '\nattributes #0 = { "wasm-export-name"="multiply" }\n'
+
+        # Parse, compile, execute
+        mod = llvm.parse_assembly(llvm_ir)
+        mod.verify()
+        engine = create_wasm_engine(mod)
+        engine.finalize_object()
+        multiply = engine.get_function('multiply')
+        self.assertEqual(multiply(6, 7), 42)
