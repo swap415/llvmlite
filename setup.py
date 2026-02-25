@@ -64,7 +64,10 @@ def build_library_files(dry_run):
     plt = sys.platform
     if 'linux' in plt or 'bsd' in plt or 'darwin' in plt or 'gnu' in plt:
         os.environ['CXXFLAGS'] = os.environ.get('CXXFLAGS', '') + ' -fPIC'
-    spawn(cmd, dry_run=dry_run)
+    if dry_run:
+        log.info("skipping %s (dry run)", cmd)
+    else:
+        spawn(cmd)
 
 
 class LlvmliteBuild(build):
