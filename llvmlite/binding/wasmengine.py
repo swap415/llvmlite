@@ -19,6 +19,9 @@ class WasmRuntimeError(RuntimeError):
 
 def _find_wasm_ld(wasm_ld_path=None, _which=shutil.which):
     """Locate wasm-ld: explicit path > WASM_LD env var > PATH lookup."""
+    # In Emscripten, linking is done via JavaScript - no native wasm-ld needed
+    if sys.platform == 'emscripten':
+        return None
     if wasm_ld_path is not None:
         return wasm_ld_path
     env = os.environ.get('WASM_LD')
@@ -161,19 +164,47 @@ def _create_wasm_target_machine(triple='wasm32-unknown-unknown', features=''):
 
 
 def _link_wasm(object_files, wasm_ld_path, output_path):
-    cmd = [
-        wasm_ld_path,
-        '--no-entry',
-        '--export-all',
-        '--allow-undefined',
-        '-o', str(output_path),
-    ] + [str(f) for f in object_files]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
+    """Link object files into a WASM binary using wasm-ld."""
+    if sys.platform == 'emscripten':
+        _link_wasm_emscripten(object_files, output_path)
+    else:
+        cmd = [
+            wasm_ld_path,
+            '--no-entry',
+            '--export-all',
+            '--allow-undefined',
+            '-o', str(output_path),
+        ] + [str(f) for f in object_files]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"wasm-ld failed (exit code {result.returncode}):\n"
+                f"{result.stderr}"
+            )
+
+
+def _link_wasm_emscripten(object_files, output_path):
+    """
+    Link WASM in Emscripten/Pyodide using JavaScript wasm-ld.
+
+    Requires globalThis.wasmLd to be loaded (from llvm-wasm or similar).
+    """
+    from js import globalThis, Uint8Array
+    from pyodide.ffi import to_js
+
+    if not hasattr(globalThis, 'wasmLd'):
         raise RuntimeError(
-            f"wasm-ld failed (exit code {result.returncode}):\n"
-            f"{result.stderr}"
+            "Browser WASM linking requires globalThis.wasmLd. "
+            "Load wasm-ld.wasm from https://github.com/aspect-build/aspect-workflows-llvm "
+            "or similar before using llvmlite in the browser."
         )
+
+    # Read all object files
+    obj_bytes_list = [Path(f).read_bytes() for f in object_files]
+
+    # Call JavaScript wasm-ld
+    wasm_bytes = globalThis.wasmLd(to_js(obj_bytes_list))
+    Path(output_path).write_bytes(bytes(wasm_bytes.to_py()))
 
 
 def create_wasm_engine(module, target_machine=None, wasm_ld_path=None,
@@ -289,8 +320,143 @@ class WasmExecutionEngine:
 
 
 class EmscriptenBackend:
+    """
+    WASM execution backend for Pyodide/Emscripten environments.
+
+    Uses the browser's WebAssembly API via Pyodide's JavaScript interop.
+    This enables llvmlite to compile and run WASM entirely in the browser.
+    """
+
     def __init__(self):
-        raise NotImplementedError(
-            "EmscriptenBackend is not yet implemented. "
-            "This backend will use dlopen() on Emscripten's virtual FS."
-        )
+        if sys.platform != 'emscripten':
+            raise RuntimeError(
+                "EmscriptenBackend is only available in Pyodide/Emscripten. "
+                "Use WasmtimeBackend for native platforms."
+            )
+        # Import Pyodide's JavaScript interop
+        try:
+            from js import WebAssembly, Uint8Array
+            from pyodide.ffi import to_js
+        except ImportError:
+            raise ImportError(
+                "EmscriptenBackend requires Pyodide. "
+                "This backend only works in browser environments."
+            )
+        self._WebAssembly = WebAssembly
+        self._Uint8Array = Uint8Array
+        self._to_js = to_js
+        self._instance = None
+        self._module = None
+        self._exports = {}
+        self._memory = None
+
+    def load(self, wasm_bytes):
+        """Load WASM bytes using browser's WebAssembly.instantiate()."""
+        import asyncio
+        from pyodide.ffi import to_js
+
+        # Convert Python bytes to JavaScript Uint8Array
+        js_bytes = self._Uint8Array.new(to_js(wasm_bytes))
+
+        # WebAssembly.instantiate is async, use Pyodide's event loop
+        async def _load():
+            result = await self._WebAssembly.instantiate(js_bytes)
+            return result
+
+        # Run the async load
+        loop = asyncio.get_event_loop()
+        result = loop.run_until_complete(_load())
+
+        self._module = result.module
+        self._instance = result.instance
+
+        # Cache exports
+        self._exports = {}
+        exports_obj = self._instance.exports
+        # Get export names via Object.keys()
+        from js import Object
+        for name in Object.keys(exports_obj):
+            self._exports[name] = getattr(exports_obj, name)
+
+        # Cache memory reference if available
+        if 'memory' in self._exports:
+            self._memory = self._exports['memory']
+
+    def call(self, name, *args):
+        """Call an exported WASM function by name."""
+        func = self._exports.get(name)
+        if func is None:
+            raise KeyError(f"No exported function named {name!r}")
+
+        # Convert Python ints to JavaScript BigInt for i64 params
+        from pyodide.ffi import to_js
+        js_args = []
+        for arg in args:
+            if isinstance(arg, int) and (arg > 2**31 - 1 or arg < -2**31):
+                # Large int needs BigInt
+                from js import BigInt
+                js_args.append(BigInt(arg))
+            else:
+                js_args.append(to_js(arg))
+
+        try:
+            result = func(*js_args)
+            # Convert BigInt result back to Python int if needed
+            if hasattr(result, 'valueOf'):
+                return int(result.valueOf())
+            return result
+        except Exception as e:
+            raise WasmRuntimeError(str(e)) from e
+
+    def get_memory(self):
+        """Return the WASM memory export."""
+        return self._memory
+
+    def write_memory(self, offset, data):
+        """Write bytes into WASM linear memory at offset."""
+        if self._memory is None:
+            raise RuntimeError("No memory export in WASM module")
+
+        from js import Uint8Array
+        from pyodide.ffi import to_js
+
+        # Get memory buffer
+        buffer = self._memory.buffer
+        mem_view = Uint8Array.new(buffer)
+        mem_size = mem_view.length
+
+        if offset < 0 or offset + len(data) > mem_size:
+            raise IndexError(
+                f"Write at offset {offset} with length {len(data)} "
+                f"exceeds memory size {mem_size}"
+            )
+
+        # Write data byte by byte (could optimize with subarray.set)
+        js_data = Uint8Array.new(to_js(data))
+        mem_view.set(js_data, offset)
+
+    def read_memory(self, offset, size):
+        """Read bytes from WASM linear memory at offset."""
+        if self._memory is None:
+            raise RuntimeError("No memory export in WASM module")
+
+        from js import Uint8Array
+
+        # Get memory buffer
+        buffer = self._memory.buffer
+        mem_view = Uint8Array.new(buffer)
+        mem_size = mem_view.length
+
+        if offset < 0 or offset + size > mem_size:
+            raise IndexError(
+                f"Read at offset {offset} with length {size} "
+                f"exceeds memory size {mem_size}"
+            )
+
+        # Read slice and convert to Python bytes
+        slice_view = mem_view.subarray(offset, offset + size)
+        return bytes(slice_view.to_py())
+
+    def get_export_names(self):
+        """Return list of exported names."""
+        return list(self._exports.keys())
