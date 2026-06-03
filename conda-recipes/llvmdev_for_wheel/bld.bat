@@ -11,7 +11,16 @@ if not exist "%VSINSTALLDIR%" (
 )
 
 echo "Found VS 2022 in %VSINSTALLDIR%"
-call "%VSINSTALLDIR%VC\\Auxiliary\\Build\\vcvarsall.bat" x64
+
+REM ARCH is set by conda-build (e.g., "64" for x64, "arm64" for ARM64)
+if "%ARCH%"=="arm64" (
+    set "VCVARS_ARCH=arm64"
+) else (
+    set "VCVARS_ARCH=x64"
+)
+
+echo "Building for architecture: %VCVARS_ARCH%"
+call "%VSINSTALLDIR%VC\\Auxiliary\\Build\\vcvarsall.bat" %VCVARS_ARCH%
 
 mkdir build
 cd build

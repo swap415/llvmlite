@@ -11,7 +11,16 @@ if not exist "%VSINSTALLDIR%" (
 )
 
 echo "Found VS 2022 in %VSINSTALLDIR%"
-call "%VSINSTALLDIR%VC\\Auxiliary\\Build\\vcvarsall.bat" x64
+
+REM ARCH is set by conda-build (e.g., "64" for x64, "arm64" for ARM64)
+if "%ARCH%"=="arm64" (
+    set "VCVARS_ARCH=arm64"
+) else (
+    set "VCVARS_ARCH=x64"
+)
+
+echo "Building for architecture: %VCVARS_ARCH%"
+call "%VSINSTALLDIR%VC\\Auxiliary\\Build\\vcvarsall.bat" %VCVARS_ARCH%
 
 mkdir build
 cd build
@@ -57,15 +66,7 @@ cmake -G "Ninja" ^
     %SRC_DIR%/llvm
 if %ERRORLEVEL% neq 0 exit 1
 
-cmake --build .
+REM PROBE: build only compiler-rt to verify it compiles on win-arm64.
+REM Skips the full LLVM build, install, and lit tests to get a fast signal.
+cmake --build . --target compiler-rt
 if %ERRORLEVEL% neq 0 exit 1
-
-cmake --build . --target install
-
-if %ERRORLEVEL% neq 0 exit 1
-
-REM bin\opt -S -vector-library=SVML -mcpu=haswell -O3 %RECIPE_DIR%\numba-3016.ll | bin\FileCheck %RECIPE_DIR%\numba-3016.ll
-REM if %ERRORLEVEL% neq 0 exit 1
-
-cd ..\llvm\test
-python ..\..\build\bin\llvm-lit.py -vv Transforms ExecutionEngine Analysis CodeGen/X86
