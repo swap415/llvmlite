@@ -30,12 +30,6 @@ set "CXXFLAGS=-MD"
 set "CC=cl.exe"
 set "CXX=cl.exe"
 
-if "%ARCH%"=="arm64" (
-    set "LLVM_ENABLE_PROJECTS=lld"
-) else (
-    set "LLVM_ENABLE_PROJECTS=lld;compiler-rt"
-)
-
 cmake -G "Ninja" ^
     -DCMAKE_BUILD_TYPE="Release" ^
     -DCMAKE_PREFIX_PATH=%LIBRARY_PREFIX% ^
@@ -55,7 +49,7 @@ cmake -G "Ninja" ^
     -DLLVM_BUILD_LLVM_C_DYLIB=no ^
     -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=WebAssembly ^
     -DCMAKE_POLICY_DEFAULT_CMP0111=NEW ^
-    -DLLVM_ENABLE_PROJECTS:STRING=%LLVM_ENABLE_PROJECTS% ^
+    -DLLVM_ENABLE_PROJECTS:STRING=lld;compiler-rt ^
     -DLLVM_ENABLE_ASSERTIONS=ON ^
     -DLLVM_ENABLE_DIA_SDK=OFF ^
     -DCOMPILER_RT_BUILD_BUILTINS=ON ^
