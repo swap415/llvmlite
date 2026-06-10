@@ -1,0 +1,42 @@
+Fix "invalid fixup for add (uimm12) instruction" for windows-triple + ELF
+targets using the large code model (llvmlite/numba MCJIT compiles with
+aarch64-pc-windows-msvc-elf and CodeModel::Large; any function whose frame
+reaches the Windows stack-probe size, 4 KiB, hits this).
+
+emitWindowsStackProbe in AArch64PrologueEpilogue.cpp materializes the
+__chkstk address under CodeModel::Large with MOVaddrEXT (ADRP+ADD) whose
+external-symbol operands carry no MO_PAGE / MO_PAGEOFF|MO_NC target flags.
+The COFF object writer does not care - it maps fixup_aarch64_add_imm12 to
+IMAGE_REL_ARM64_PAGEOFFSET_12A from the fixup kind alone - but the ELF
+object writer requires the :lo12: specifier on the ADD, which
+AArch64MCInstLower only attaches when the operand carries MO_PAGEOFF|MO_NC.
+AArch64ELFObjectWriter::getRelocType therefore reports
+"invalid fixup for add (uimm12) instruction" and object emission fails.
+
+Even with the flags added, ADRP+ADD is limited to +-4 GiB, which only
+statically linked COFF images guarantee; under MCJIT the in-process
+__chkstk (resolved via LLVM's explicit-symbols table) is in the DLL range,
+far from JIT-allocated code. Instead, emit the plain BL form on non-COFF
+Windows targets at every code model: RuntimeDyldELF materializes far-call
+stubs (MOVZ/MOVK G0-G3) for out-of-range R_AARCH64_CALL26, so BL is
+range-safe at any distance. COFF output is unchanged.
+
+diff --git a/llvm/lib/Target/AArch64/AArch64PrologueEpilogue.cpp b/llvm/lib/Target/AArch64/AArch64PrologueEpilogue.cpp
+--- a/llvm/lib/Target/AArch64/AArch64PrologueEpilogue.cpp
++++ b/llvm/lib/Target/AArch64/AArch64PrologueEpilogue.cpp
+@@ -1128,7 +1128,14 @@
+     reportFatalUsageError("no available implementation of __chkstk");
+
+   const char *ChkStk = TLI->getLibcallImplName(ChkStkLibcall).data();
+-  switch (MF.getTarget().getCodeModel()) {
++  // The CodeModel::Large path materializes __chkstk with MOVaddrEXT
++  // (ADRP+ADD). Its flag-less symbol operands lack the :lo12: specifier the
++  // ELF object writer requires ("invalid fixup for add (uimm12)
++  // instruction"), and ADRP+ADD is limited to +-4 GiB, which only COFF
++  // images guarantee. On ELF (JIT) always emit BL; the JIT linker creates
++  // far-call stubs for out-of-range R_AARCH64_CALL26.
++  switch (Subtarget.isTargetCOFF() ? MF.getTarget().getCodeModel()
++                                   : CodeModel::Small) {
+   case CodeModel::Tiny:
+   case CodeModel::Small:
+   case CodeModel::Medium:

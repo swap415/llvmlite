@@ -13,6 +13,7 @@ source:
     sha256: {{ sha256_llvm }}
     patches:
     - ../llvm22-aarch64-windows-frame-record.patch
+    - ../llvm22-aarch64-windows-elf-chkstk.patch
     # - ../llvm15-clear-gotoffsetmap.patch
     # - ../llvm15-remove-use-of-clonefile.patch
     # - ../llvm15-svml.patch
