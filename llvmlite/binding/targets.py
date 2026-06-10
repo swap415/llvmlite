@@ -267,7 +267,12 @@ class Target(ffi.ObjectRef):
         # MCJIT under Windows only supports ELF objects, see
         # http://lists.llvm.org/pipermail/llvm-dev/2013-December/068341.html
         # Note we still want to produce regular COFF files in AOT mode.
-        if os.name == 'nt' and codemodel == 'jitdefault':
+        # On aarch64 keep COFF: RuntimeDyldCOFFAArch64 handles JIT loading,
+        # and as of LLVM 22 the windows+ELF combination miscompiles frame
+        # records (AArch64FrameLowering pairs FP with a GPR other than LR;
+        # introduced by llvm-project commit f4062100a0c7).
+        if (os.name == 'nt' and codemodel == 'jitdefault'
+                and not triple.startswith('aarch64')):
             triple += '-elf'
         tm = ffi.lib.LLVMPY_CreateTargetMachine(self,
                                                 _encode_string(triple),
