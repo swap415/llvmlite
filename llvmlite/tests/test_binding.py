@@ -3157,10 +3157,9 @@ class TestBuild(TestCase):
                                                 "shell32",  # this is delayed
                                                 "ole32",]), # also delayed
                                   # no vcruntime140_1 on arm64 (x64-only
-                                  # exception handling helper)
-                                  "arm64": set(["z",
-                                                "zstd",
-                                                "advapi32",
+                                  # exception handling helper); z/zstd are
+                                  # statically linked on win-arm64
+                                  "arm64": set(["advapi32",
                                                 "kernel32",
                                                 "ntdll",
                                                 "msvcp140",
