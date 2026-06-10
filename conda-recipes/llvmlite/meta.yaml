@@ -27,6 +27,7 @@ requirements:
     # On channel https://anaconda.org/numba/
     - llvmdev 22
     - vs2015_runtime # [win and not arm64]
+    - vc14_runtime # [win and arm64]
     # llvmdev is built with libz compression support
     - zlib           # [unix]
     # requires libxml2
@@ -34,6 +35,7 @@ requirements:
   run:
     - python >=3.10
     - vs2015_runtime # [win and not arm64]
+    - vc14_runtime # [win and arm64]
     # osx has dynamically linked libstdc++
     - libcxx >=4.0.1 # [osx]
     - zlib

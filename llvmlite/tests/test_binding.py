@@ -2252,6 +2252,10 @@ class TestTarget(BaseTest):
              llvm.targets.Triple(Arch="wasm64", SubArch='',
                                  Vendor="unknown", OS="wasi",
                                  Env="unknown", ObjectFormat="Wasm")),
+            ("aarch64-pc-windows-msvc",
+             llvm.targets.Triple(Arch="aarch64", SubArch='',
+                                 Vendor="pc", OS="windows",
+                                 Env="msvc", ObjectFormat="COFF")),
         ]
 
         for case in cases:
@@ -3082,8 +3086,6 @@ class TestBuild(TestCase):
                                                 "api-ms-win-crt-utility-l1-1-0",
                                                 "shell32",  # this is delayed
                                                 "ole32",]), # also delayed
-                                  # no vcruntime140_1 on arm64 (x64-only
-                                  # exception handling helper)
                                   "arm64": set(["advapi32",
                                                 "kernel32",
                                                 "ntdll",
@@ -3156,10 +3158,9 @@ class TestBuild(TestCase):
                                                 "api-ms-win-crt-utility-l1-1-0",
                                                 "shell32",  # this is delayed
                                                 "ole32",]), # also delayed
-                                  # no vcruntime140_1 on arm64 (x64-only
-                                  # exception handling helper); z/zstd are
-                                  # statically linked on win-arm64
-                                  "arm64": set(["advapi32",
+                                  "arm64": set(["z",
+                                                "zstd",
+                                                "advapi32",
                                                 "kernel32",
                                                 "ntdll",
                                                 "msvcp140",
@@ -3189,7 +3190,7 @@ class TestBuild(TestCase):
                                                "zstd",
                                                "c++",]),
                                  },# end darwin
-                      } # end wheel_expected
+                      } # end conda_expected
 
     def check_linkage(self, info, package_type):
         machine = platform.machine().lower()

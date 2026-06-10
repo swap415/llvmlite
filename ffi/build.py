@@ -20,10 +20,18 @@ build_dir = os.path.join(here_dir, 'build')
 target_dir = os.path.join(os.path.dirname(here_dir), 'llvmlite', 'binding')
 
 
-is_64bit = sys.maxsize >= 2**32
-
-# Detect ARM64 architecture
-is_arm64 = platform.machine().lower() in ('arm64', 'aarch64')
+is_windows = sys.platform == "win32"
+is_arm64 = False
+is_64bit = False
+if is_windows:
+    machine = platform.machine().lower()
+    arch_env = os.environ.get("ARCH", "").lower()
+    if machine in ("arm64", "aarch64") or arch_env == "arm64":
+        is_arm64 = True
+    elif machine in ("amd64", "x86_64"):
+        is_64bit = True
+else:
+    is_64bit = sys.maxsize >= 2**32
 
 
 def env_var_options_to_cmake_options():
@@ -144,26 +152,27 @@ def find_windows_generator():
     # LLVM 9.0 and later needs VS 2017 minimum.
     generators = []
     env_generator = os.environ.get("CMAKE_GENERATOR", None)
+    if is_arm64:
+        arch = "ARM64"
+    elif is_64bit:
+        arch = "x64"
+    else:
+        arch = "Win32"
+
     if env_generator is not None:
         env_arch = os.environ.get("CMAKE_GENERATOR_ARCH", None)
         env_toolkit = os.environ.get("CMAKE_GENERATOR_TOOLKIT", None)
+        if is_arm64 and env_arch and env_arch.lower() == "x64":
+            env_arch = "ARM64"
         generators.append(
             (env_generator, env_arch, env_toolkit)
         )
 
-    # Determine architecture platform
-    if is_arm64:
-        arch_platform = 'ARM64'
-    elif is_64bit:
-        arch_platform = 'x64'
-    else:
-        arch_platform = 'Win32'
-
     generators.extend([
         # use VS2022 first
-        ('Visual Studio 17 2022', arch_platform, 'v143'),
+        ('Visual Studio 17 2022', arch, 'v143'),
         # try VS2019 next
-        ('Visual Studio 16 2019', arch_platform, 'v142'),
+        ('Visual Studio 16 2019', arch, 'v142'),
         # # This is the generator configuration for VS2017
         # ('Visual Studio 15 2017' + (' Win64' if is_64bit else ''), None, None)
     ])
