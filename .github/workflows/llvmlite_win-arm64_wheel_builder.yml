@@ -59,6 +59,21 @@ jobs:
           channel: ${{ env.WIN_ARM64_CONDA_CHANNEL }}
           destination-directory: ${{ runner.temp }}/conda-standalone
 
+      - name: Resolve pinned llvmdev workflow run
+        run: |
+          if [ -f ci/llvmdev_run_id.txt ]; then
+            echo "LLVMDEV_RUN_ID=$(cat ci/llvmdev_run_id.txt)" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Download llvmdev artifact
+        if: env.LLVMDEV_RUN_ID != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: llvmdev_for_wheel_win-arm64
+          path: llvmdev_channel
+          run-id: ${{ env.LLVMDEV_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create build environment
         env:
           PY_MATRIX: ${{ matrix.python-version }}
@@ -73,8 +88,13 @@ jobs:
             PY_SPEC="python=${PY_VER}"
             EXTRA_CHANNEL=""
           fi
+          if [ -d llvmdev_channel/win-arm64 ]; then
+            LLVMDEV_SRC="-c ${GITHUB_WORKSPACE}/llvmdev_channel"
+          else
+            LLVMDEV_SRC="-c ${LLVMDEV_CHANNEL}"
+          fi
           "${CONDA_EXE}" create --prefix "${CONDA_PREFIX}" --yes \
-            -c "${LLVMDEV_CHANNEL}" -c "${WIN_ARM64_CONDA_CHANNEL}" ${EXTRA_CHANNEL} \
+            ${LLVMDEV_SRC} -c "${WIN_ARM64_CONDA_CHANNEL}" ${EXTRA_CHANNEL} \
             -c m2-winarm64 -c main \
             "${PY_SPEC}" "llvmdev=${FALLBACK_LLVMDEV_VERSION}" cmake libxml2 setuptools pip
           echo "${CONDA_PREFIX}" >> "${GITHUB_PATH}"

@@ -1,6 +1,14 @@
 name: llvmdev-win-arm64
 
 on:
+  push:
+    branches:
+      - exp/win-arm64
+    paths:
+      - .github/workflows/llvmdev_build_win-arm64.yml
+      - conda-recipes/llvmdev/**
+      - conda-recipes/llvmdev_for_wheel/**
+      - conda-recipes/*.patch
   pull_request:
     paths:
       - .github/workflows/llvmdev_build_win-arm64.yml

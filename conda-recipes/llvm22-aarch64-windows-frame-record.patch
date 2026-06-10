@@ -1,0 +1,30 @@
+Fix Windows ARM64 frame-record corruption for windows-triple + ELF targets.
+
+llvm-project commit f4062100a0c7 (PR #156467) changed isTargetWindows() in
+AArch64FrameLowering.cpp to key off the object format (usesWindowsCFI())
+while AArch64RegisterInfo::getCalleeSavedRegs still selects the Windows CSR
+save order from the triple. For a windows-OS triple emitting ELF objects
+(llvmlite/numba MCJIT uses aarch64-pc-windows-msvc-elf), the two disagree:
+frame lowering applies non-Windows pairing rules to the Windows CSR order
+and pairs FP with a GPR other than LR whenever an odd number of GPR CSRs is
+saved and a frame pointer is required. Assert builds abort with
+"FrameRecord must be allocated together with LR"
+(computeCalleeSaveRegisterPairs); release builds emit a corrupted frame
+record. Revert the predicate to the triple-based subtarget check.
+
+diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
+--- a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
++++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
+@@ -384,7 +384,11 @@
+ }
+
+ static bool isTargetWindows(const MachineFunction &MF) {
+-  return MF.getTarget().getMCAsmInfo()->usesWindowsCFI();
++  // Key off the OS in the triple, not the CFI directive style: a Windows
++  // target JITing ELF objects must still follow the Windows CSR pairing
++  // rules that getCalleeSavedRegs selected from the triple, otherwise FP
++  // is paired with a GPR other than LR and the frame record is corrupted.
++  return MF.getSubtarget<AArch64Subtarget>().isTargetWindows();
+ }
+
+ bool AArch64FrameLowering::hasSVECalleeSavesAboveFrameRecord(
