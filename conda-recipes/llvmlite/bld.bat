@@ -5,13 +5,12 @@ set LLVMLITE_PACKAGE_FORMAT=conda
 set CMAKE_PREFIX_PATH=%LIBRARY_PREFIX%
 
 @rem VS2022 uses a different naming convention for platforms than older version
+@rem ARCH is set by conda-build (e.g. "32"/"64" for x86, "arm64" for ARM64)
 if "%ARCH%"=="32" (
-    @rem VS2022:
-    @rem set CMAKE_GENERATOR_ARCH=
     set CMAKE_GENERATOR_ARCH=Win32
+) else if "%ARCH%"=="arm64" (
+    set CMAKE_GENERATOR_ARCH=ARM64
 ) else (
-    @rem VS2022
-    @rem set CMAKE_GENERATOR_ARCH=Win64
     set CMAKE_GENERATOR_ARCH=x64
 )
 set CMAKE_GENERATOR=Visual Studio 17 2022

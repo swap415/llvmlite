@@ -7,6 +7,7 @@ from __future__ import print_function
 
 import functools
 import os
+import platform
 import subprocess
 import shutil
 import sys
@@ -20,6 +21,9 @@ target_dir = os.path.join(os.path.dirname(here_dir), 'llvmlite', 'binding')
 
 
 is_64bit = sys.maxsize >= 2**32
+
+# Detect ARM64 architecture
+is_arm64 = platform.machine().lower() in ('arm64', 'aarch64')
 
 
 def env_var_options_to_cmake_options():
@@ -147,11 +151,19 @@ def find_windows_generator():
             (env_generator, env_arch, env_toolkit)
         )
 
+    # Determine architecture platform
+    if is_arm64:
+        arch_platform = 'ARM64'
+    elif is_64bit:
+        arch_platform = 'x64'
+    else:
+        arch_platform = 'Win32'
+
     generators.extend([
         # use VS2022 first
-        ('Visual Studio 17 2022', ('x64' if is_64bit else 'Win32'), 'v143'),
+        ('Visual Studio 17 2022', arch_platform, 'v143'),
         # try VS2019 next
-        ('Visual Studio 16 2019', ('x64' if is_64bit else 'Win32'), 'v142'),
+        ('Visual Studio 16 2019', arch_platform, 'v142'),
         # # This is the generator configuration for VS2017
         # ('Visual Studio 15 2017' + (' Win64' if is_64bit else ''), None, None)
     ])
