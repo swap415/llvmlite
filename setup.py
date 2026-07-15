@@ -179,6 +179,14 @@ if bdist_wheel is not None:
             # The build isn't platform-independent
             self.root_is_pure = False
 
+        def get_tag(self):
+            # The wheel must contain nothing tied to a CPython version or
+            # ABI: the package is pure Python and libllvmlite is loaded
+            # with ctypes (llvmlite.binding.ffi), never linked against
+            # libpython. The minimum Python is enforced by python_requires.
+            _, _, plat = bdist_wheel.get_tag(self)
+            return 'py3', 'none', plat
+
     cmdclass.update({'bdist_wheel': LLvmliteBDistWheel})
 
 # A stub C-extension to make bdist_wheel build an arch dependent build
