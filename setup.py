@@ -1,4 +1,4 @@
-from setuptools import setup, Command, Extension
+from setuptools import setup, Command
 from setuptools.command.build import build
 from setuptools.command.build_ext import build_ext
 from setuptools.command.install import install
@@ -188,11 +188,6 @@ if bdist_wheel is not None:
             return 'py3', 'none', plat
 
     cmdclass.update({'bdist_wheel': LLvmliteBDistWheel})
-
-# A stub C-extension to make bdist_wheel build an arch dependent build
-ext_stub = Extension(name="llvmlite.binding._stub",
-                     sources=["llvmlite/binding/_stub.c"])
-
 
 packages = ['llvmlite',
             'llvmlite.binding',
