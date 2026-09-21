@@ -113,18 +113,39 @@ implement the module and function pass managers:
       Add the `Module Verifier
       <https://llvm.org/docs/Passes.html#verify-module-verifier>`_ pass.
 
-   .. method:: run(module, passbuilder)
+   .. method:: run(module, passbuilder, remarks_file=None, remarks_format='yaml', remarks_filter='')
 
       Run optimization passes on *module*, a :class:`ModuleRef` instance.
+      The optional ``remarks_file``, ``remarks_format``, and ``remarks_filter``
+      arguments write LLVM optimization remarks to a file. Supported formats
+      are ``yaml`` and ``bitstream``; the filter is a regular expression
+      matched against pass names.
+
+   .. method:: run_with_remarks(module, passbuilder, remarks_format='yaml', remarks_filter='')
+
+      Run the passes and return the serialized optimization remarks. Text
+      formats return :class:`str`; ``bitstream`` returns :class:`bytes`.
 
 
 .. class:: FunctionPassManager()
 
    A pass manager for running optimization passes on an LLVM function.
 
-   .. method:: run(function, passbuilder)
+   .. method:: run(function, passbuilder, remarks_file=None, remarks_format='yaml', remarks_filter='')
 
       Run optimization passes on *function*, a :class:`ValueRef` instance.
+
+      The optional remarks arguments have the same meaning as for
+      :meth:`ModulePassManager.run`.
+
+   .. method:: run_with_remarks(function, passbuilder, remarks_format='yaml', remarks_filter='')
+
+      Run the passes and return the serialized optimization remarks. Text
+      formats return :class:`str`; ``bitstream`` returns :class:`bytes`.
+
+Invalid filters, formats, or output setup raise :class:`RuntimeError`.
+Optimization remarks are diagnostic output; their pass names, schema, and
+wording can change between LLVM versions.
 
 
 These can be created with passes populated by using the
