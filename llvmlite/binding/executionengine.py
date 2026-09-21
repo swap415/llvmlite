@@ -135,9 +135,11 @@ class ExecutionEngine(ffi.ObjectRef):
 
     def enable_jit_events(self):
         """
-        Enable JIT events for profiling of generated code.
-        Return value indicates whether connection to profiling tool
-        was successful.
+        Enable the JIT event listeners available in this LLVM build.
+
+        Call this method at most once per engine.
+        Return whether at least one listener was registered. On Linux,
+        ``has_perf_jit_events`` reports perf listener availability specifically.
         """
         ret = ffi.lib.LLVMPY_EnableJITEvents(self)
         return ret
@@ -273,6 +275,12 @@ ffi.lib.LLVMPY_GetExecutionEngineTargetData.argtypes = [
     ffi.LLVMExecutionEngineRef
 ]
 ffi.lib.LLVMPY_GetExecutionEngineTargetData.restype = ffi.LLVMTargetDataRef
+
+ffi.lib.LLVMPY_EnableJITEvents.argtypes = [
+    ffi.LLVMExecutionEngineRef,
+]
+ffi.lib.LLVMPY_EnableJITEvents.restype = c_bool
+
 
 ffi.lib.LLVMPY_TryAllocateExecutableMemory.argtypes = []
 ffi.lib.LLVMPY_TryAllocateExecutableMemory.restype = c_int
