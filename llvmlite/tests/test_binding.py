@@ -11,7 +11,7 @@ import subprocess
 import sys
 import unittest
 from contextlib import contextmanager
-from tempfile import mkstemp
+from tempfile import mkstemp, TemporaryDirectory
 
 from llvmlite import ir
 from llvmlite import binding as llvm
@@ -2758,6 +2758,94 @@ class TestNewModulePassManager(BaseTest, NewPassManagerMixin):
         self.assertIn("alloca", orig_asm_optnone)
         self.assertIn("alloca", optimized_asm_optnone)
 
+    def test_run_with_remarks(self):
+        mod = self.module(asm_inlineasm2)
+        pb = self.pb(speed_level=3)
+        mpm = pb.getModulePassManager()
+        remarks = mpm.run_with_remarks(
+            mod, pb, remarks_filter='inlin.*',
+        )
+
+        self.assertIsInstance(remarks, str)
+        self.assertIn('--- !Passed', remarks)
+        self.assertIn('Pass:            inline', remarks)
+        self.assertIn('Name:            Inlined', remarks)
+        self.assertIn('Function:        caller', remarks)
+        self.assertIn('Callee:          inlineme', remarks)
+
+    def test_run_with_missed_remarks_and_debug_location(self):
+        mod = self.module(asm_inlineasm3)
+        pb = self.pb(speed_level=3)
+        mpm = pb.getModulePassManager()
+        remarks = mpm.run_with_remarks(
+            mod, pb, remarks_filter='inlin.*',
+        )
+
+        self.assertIn('--- !Missed', remarks)
+        self.assertIn('Name:            NeverInline', remarks)
+        self.assertIn('DebugLoc:        { File: test.c', remarks)
+        self.assertIn('Callee:          inlineme', remarks)
+
+    def test_remarks_file_and_filter(self):
+        descriptor, path = mkstemp()
+        os.close(descriptor)
+        try:
+            mod = self.module(asm_inlineasm2)
+            pb = self.pb(speed_level=3)
+            mpm = pb.getModulePassManager()
+            result = mpm.run(
+                mod, pb, remarks_file=path,
+                remarks_filter='loop-vectorize',
+            )
+            self.assertIsNone(result)
+            with open(path, encoding='utf-8') as remarks:
+                self.assertEqual(remarks.read(), '')
+        finally:
+            os.unlink(path)
+
+    def test_remarks_bitstream(self):
+        mod = self.module(asm_inlineasm2)
+        pb = self.pb(speed_level=3)
+        mpm = pb.getModulePassManager()
+        remarks = mpm.run_with_remarks(
+            mod, pb, remarks_format='bitstream',
+            remarks_filter='inlin.*',
+        )
+
+        self.assertIsInstance(remarks, bytes)
+        self.assertTrue(remarks)
+
+    def test_remarks_errors_leave_context_reusable(self):
+        pb = self.pb(speed_level=3)
+        mpm = pb.getModulePassManager()
+        with self.assertRaisesRegex(RuntimeError, 'parentheses not balanced'):
+            mpm.run_with_remarks(
+                self.module(asm_inlineasm2), pb, remarks_filter='(',
+            )
+        with self.assertRaisesRegex(RuntimeError, 'Unknown remark format'):
+            mpm.run_with_remarks(
+                self.module(asm_inlineasm2), pb, remarks_format='invalid',
+            )
+        with self.assertRaisesRegex(RuntimeError,
+                                    'remark filename must not be empty'):
+            mpm.run(self.module(asm_inlineasm2), pb, remarks_file='')
+
+        with TemporaryDirectory() as directory:
+            missing = os.path.join(directory, 'missing', 'remarks.yaml')
+            with self.assertRaisesRegex(RuntimeError,
+                                        'Failed to initialize remarks'):
+                mpm.run(
+                    self.module(asm_inlineasm2), pb,
+                    remarks_file=missing,
+                )
+
+        for _ in range(2):
+            mpm = pb.getModulePassManager()
+            remarks = mpm.run_with_remarks(
+                self.module(asm_inlineasm2), pb, remarks_filter='inlin.*',
+            )
+            self.assertIn('--- !Passed', remarks)
+
     def test_optsize_minsize(self):
         pb = self.pb(speed_level=3)
 
@@ -2911,6 +2999,16 @@ class TestNewFunctionPassManager(BaseTest, NewPassManagerMixin):
         optimized_asm = str(fun)
         self.assertIn("%.3", orig_asm)
         self.assertNotIn("%.3", optimized_asm)
+
+    def test_run_with_remarks(self):
+        mod = self.module()
+        pb = self.pb(speed_level=3)
+        fpm = pb.getFunctionPassManager()
+        remarks = fpm.run_with_remarks(
+            mod.get_function('sum'), pb, remarks_filter='inlin.*',
+        )
+
+        self.assertEqual(remarks, '')
 
     # This should not crash
     def test_declarations(self):
