@@ -9,6 +9,9 @@ from llvmlite.binding import ffi
 ffi.lib.LLVMPY_HasSVMLSupport.argtypes = ()
 ffi.lib.LLVMPY_HasSVMLSupport.restype = c_int
 
+ffi.lib.LLVMPY_HasPerfJITEventSupport.argtypes = ()
+ffi.lib.LLVMPY_HasPerfJITEventSupport.restype = c_int
+
 ffi.lib.LLVMPY_IsStaticLibstdcxxLinkageBuild.argtypes = ()
 ffi.lib.LLVMPY_IsStaticLibstdcxxLinkageBuild.restype = c_int
 
@@ -33,6 +36,9 @@ def _has_svml():
 
 
 has_svml = _has_svml()
+
+
+has_perf_jit_events = bool(ffi.lib.LLVMPY_HasPerfJITEventSupport())
 
 
 def _build_llvm_linkage_type():
@@ -94,6 +100,7 @@ def get_sysinfo():
     d["llvm_linkage_type"] = build_llvm_linkage_type
     d["libstdcxx_linkage_type"] = build_libstdcxx_linkage_type
     d["llvm_assertions_state"] = llvm_assertions_state
+    d["has_perf_jit_events"] = has_perf_jit_events
 
     # import lief
     HAVE_LIEF = False

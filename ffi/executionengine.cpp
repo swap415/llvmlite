@@ -153,6 +153,12 @@ LLVMPY_EnableJITEvents(LLVMExecutionEngineRef EE) {
         llvm::unwrap(EE)->RegisterJITEventListener(listener);
         result = true;
     }
+    listener = llvm::JITEventListener::createPerfJITEventListener();
+    // if listener is null, then LLVM was not compiled for perf JIT events.
+    if (listener) {
+        llvm::unwrap(EE)->RegisterJITEventListener(listener);
+        result = true;
+    }
 #endif
     listener = llvm::JITEventListener::createIntelJITEventListener();
     // if listener is null, then LLVM was not compiled for Intel JIT events.
