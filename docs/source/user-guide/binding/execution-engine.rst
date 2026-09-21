@@ -36,6 +36,14 @@ Functions
      configuration issues, instead of letting JIT-compiled
      functions crash mysteriously.
 
+Attributes
+==========
+
+.. data:: has_perf_jit_events
+
+   ``True`` when llvmlite was linked to an LLVM build with Linux perf JIT-event
+   support. This is always ``False`` on non-Linux platforms.
+
 
 The ExecutionEngine class
 =========================
@@ -55,6 +63,17 @@ The ExecutionEngine class
 
         Make sure all modules owned by the execution engine are
         fully processed and usable for execution.
+
+   * .. method:: enable_jit_events()
+
+        Register the JIT-event listeners available in the linked LLVM build.
+        The method returns ``True`` if at least one listener was registered.
+        On Linux, the perf listener writes jitdump records that associate
+        generated code with symbols and source locations. A true return value
+        is not perf-specific because the OProfile or Intel listener can also
+        satisfy it. Call this method at most once per engine, before code
+        generation or :meth:`finalize_object`. Use
+        :data:`has_perf_jit_events` to test for that listener specifically.
 
    * .. method:: get_function_address(name)
 
