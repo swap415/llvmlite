@@ -1,7 +1,11 @@
 from ctypes import c_bool, c_int, c_size_t, POINTER, Structure, byref, c_char_p
 from collections import namedtuple
 from enum import IntFlag
+import os
+from tempfile import mkstemp
+
 from llvmlite.binding import ffi
+from llvmlite.binding.common import _encode_string
 
 
 def create_new_module_pass_manager():
@@ -117,11 +121,91 @@ class NewPassManager():
         if type(self) is NewPassManager:
             raise TypeError("Cannot instantiate NewPassManager directly")
 
-    def run(self,IR, pb):
+    def run(self, IR, pb, remarks_file=None, remarks_format='yaml',
+            remarks_filter=''):
+        """Run optimization passes on an LLVM module or function.
+
+        Parameters
+        ----------
+        IR : ModuleRef or ValueRef
+            The module or function to optimize in place.
+        pb : PassBuilder
+            The pass builder associated with this pass manager.
+        remarks_file : path-like, optional
+            Write optimization remarks to this file when provided.
+        remarks_format : str, optional
+            The LLVM remarks serialization format: ``yaml`` or ``bitstream``.
+            The default is ``yaml``.
+        remarks_filter : str, optional
+            A regular expression selecting the passes that emit remarks.
+
+        The return value is always ``None``.
+        """
+        if remarks_file is not None:
+            return self._run_with_remarks_file(
+                IR, pb, remarks_file, remarks_format, remarks_filter,
+            )
         if isinstance(self, ModulePassManager):
             ffi.lib.LLVMPY_RunNewModulePassManager(self, IR, pb)
         else:
             ffi.lib.LLVMPY_RunNewFunctionPassManager(self, IR, pb)
+
+    def _run_with_remarks_file(self, IR, pb, remarks_file, remarks_format,
+                               remarks_filter):
+        with ffi.OutputString() as error:
+            args = (
+                self,
+                IR,
+                pb,
+                _encode_string(remarks_format),
+                _encode_string(remarks_filter),
+                os.fsencode(remarks_file),
+                error,
+            )
+            if isinstance(self, ModulePassManager):
+                runner = ffi.lib.LLVMPY_RunNewModulePassManagerWithRemarks
+            else:
+                runner = ffi.lib.LLVMPY_RunNewFunctionPassManagerWithRemarks
+            success = runner(*args)
+            if not success:
+                raise RuntimeError(f"Failed to initialize remarks: {error}")
+
+    def run_with_remarks(self, IR, pb, remarks_format='yaml',
+                         remarks_filter=''):
+        """Run optimization passes and return their serialized remarks.
+
+        Parameters
+        ----------
+        IR : ModuleRef or ValueRef
+            The module or function to optimize in place.
+        pb : PassBuilder
+            The pass builder associated with this pass manager.
+        remarks_format : str, optional
+            The LLVM remarks serialization format: ``yaml`` or ``bitstream``.
+            The default is ``yaml``.
+        remarks_filter : str, optional
+            A regular expression selecting the passes that emit remarks.
+
+        Returns
+        -------
+        str or bytes
+            The serialized remarks. Text formats return a string; the
+            ``bitstream`` format returns bytes.
+        """
+        descriptor, path = mkstemp()
+        try:
+            os.close(descriptor)
+            self.run(IR, pb, path, remarks_format, remarks_filter)
+            with open(path, 'rb') as remarks:
+                result = remarks.read()
+            if remarks_format == 'bitstream':
+                return result
+            return result.decode('utf-8')
+        finally:
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
 
     def add_aa_eval_pass(self):
         if isinstance(self, ModulePassManager):
@@ -624,6 +708,13 @@ ffi.lib.LLVMPY_RunNewModulePassManager.argtypes = [
     ffi.LLVMModulePassManagerRef, ffi.LLVMModuleRef,
     ffi.LLVMPassBuilderRef,]
 
+ffi.lib.LLVMPY_RunNewModulePassManagerWithRemarks.argtypes = [
+    ffi.LLVMModulePassManagerRef, ffi.LLVMModuleRef,
+    ffi.LLVMPassBuilderRef, c_char_p, c_char_p, c_char_p,
+    POINTER(c_char_p),
+]
+ffi.lib.LLVMPY_RunNewModulePassManagerWithRemarks.restype = c_bool
+
 ffi.lib.LLVMPY_module_AddVerifierPass.argtypes = [ffi.LLVMModulePassManagerRef,]
 ffi.lib.LLVMPY_module_AddAAEvaluator.argtypes = [ffi.LLVMModulePassManagerRef,]
 ffi.lib.LLVMPY_module_AddSimplifyCFGPass.argtypes = [
@@ -815,6 +906,13 @@ ffi.lib.LLVMPY_CreateNewFunctionPassManager.restype = \
 ffi.lib.LLVMPY_RunNewFunctionPassManager.argtypes = [
     ffi.LLVMFunctionPassManagerRef, ffi.LLVMValueRef,
     ffi.LLVMPassBuilderRef,]
+
+ffi.lib.LLVMPY_RunNewFunctionPassManagerWithRemarks.argtypes = [
+    ffi.LLVMFunctionPassManagerRef, ffi.LLVMValueRef,
+    ffi.LLVMPassBuilderRef, c_char_p, c_char_p, c_char_p,
+    POINTER(c_char_p),
+]
+ffi.lib.LLVMPY_RunNewFunctionPassManagerWithRemarks.restype = c_bool
 
 ffi.lib.LLVMPY_function_AddAAEvaluator.argtypes = [
     ffi.LLVMFunctionPassManagerRef,]

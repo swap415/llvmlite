@@ -53,6 +53,7 @@
 #include "llvm/Analysis/TypeBasedAliasAnalysis.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/IRPrintingPasses.h"
+#include "llvm/IR/LLVMRemarkStreamer.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Passes/PassBuilder.h"
@@ -361,6 +362,31 @@ LLVMPY_RunNewModulePassManager(LLVMModulePassManagerRef MPMRef,
     MPM->run(*M, MAM);
 }
 
+API_EXPORT(bool)
+LLVMPY_RunNewModulePassManagerWithRemarks(
+    LLVMModulePassManagerRef MPMRef, LLVMModuleRef ModRef,
+    LLVMPassBuilderRef PBRef, const char *RemarksFormat,
+    const char *RemarksFilter, const char *RemarksFilename,
+    const char **OutError) {
+    Module *M = llvm::unwrap(ModRef);
+    auto SetupResult = setupLLVMOptimizationRemarks(
+        M->getContext(), RemarksFilename, RemarksFilter, RemarksFormat, false);
+    if (!SetupResult) {
+        std::string Message = toString(SetupResult.takeError());
+        *OutError = LLVMPY_CreateString(Message.c_str());
+        return false;
+    }
+
+    auto RemarksFile = std::move(*SetupResult);
+    if (!RemarksFile) {
+        *OutError = LLVMPY_CreateString("remark filename must not be empty");
+        return false;
+    }
+    RemarksFile->keep();
+    LLVMPY_RunNewModulePassManager(MPMRef, ModRef, PBRef);
+    return true;
+}
+
 API_EXPORT(void)
 LLVMPY_AddJumpThreadingPass_module(LLVMModulePassManagerRef MPM, int T) {
     llvm::unwrap(MPM)->addPass(
@@ -425,6 +451,31 @@ LLVMPY_RunNewFunctionPassManager(LLVMFunctionPassManagerRef FPMRef,
     PB->registerModuleAnalyses(MAM);
     PB->crossRegisterProxies(LAM, FAM, CGAM, MAM);
     FPM->run(*F, FAM);
+}
+
+API_EXPORT(bool)
+LLVMPY_RunNewFunctionPassManagerWithRemarks(
+    LLVMFunctionPassManagerRef FPMRef, LLVMValueRef FRef,
+    LLVMPassBuilderRef PBRef, const char *RemarksFormat,
+    const char *RemarksFilter, const char *RemarksFilename,
+    const char **OutError) {
+    Function *F = reinterpret_cast<Function *>(FRef);
+    auto SetupResult = setupLLVMOptimizationRemarks(
+        F->getContext(), RemarksFilename, RemarksFilter, RemarksFormat, false);
+    if (!SetupResult) {
+        std::string Message = toString(SetupResult.takeError());
+        *OutError = LLVMPY_CreateString(Message.c_str());
+        return false;
+    }
+
+    auto RemarksFile = std::move(*SetupResult);
+    if (!RemarksFile) {
+        *OutError = LLVMPY_CreateString("remark filename must not be empty");
+        return false;
+    }
+    RemarksFile->keep();
+    LLVMPY_RunNewFunctionPassManager(FPMRef, FRef, PBRef);
+    return true;
 }
 
 API_EXPORT(void)
