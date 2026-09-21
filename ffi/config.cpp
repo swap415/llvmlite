@@ -16,6 +16,15 @@ LLVMPY_HasSVMLSupport(void) {
 }
 
 API_EXPORT(int)
+LLVMPY_HasPerfJITEventSupport(void) {
+#if defined(__linux__) && LLVM_USE_PERF
+    return 1;
+#else
+    return 0;
+#endif
+}
+
+API_EXPORT(int)
 LLVMPY_IsDynamicLLVMLinkageBuild(void) {
 #ifdef HAVE_LLVMLITE_SHARED
     return 1;

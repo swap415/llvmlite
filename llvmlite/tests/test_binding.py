@@ -7,11 +7,12 @@ import locale
 import os
 import platform
 import re
+import struct
 import subprocess
 import sys
 import unittest
 from contextlib import contextmanager
-from tempfile import mkstemp
+from tempfile import mkstemp, TemporaryDirectory
 
 from llvmlite import ir
 from llvmlite import binding as llvm
@@ -1353,6 +1354,147 @@ class TestMCJit(BaseTest, JITWithTMTestMixin):
         if target_machine is None:
             target_machine = self.target_machine(jit=True)
         return llvm.create_mcjit_compiler(mod, target_machine)
+
+    def test_perf_jit_event_capability(self):
+        self.assertIsInstance(llvm.has_perf_jit_events, bool)
+
+    @unittest.skipUnless(sys.platform.startswith('linux') and
+                         llvm.has_perf_jit_events,
+                         "requires an LLVM build with perf JIT events")
+    def test_perf_jitdump_contains_debug_info(self):
+        script = f"""
+from llvmlite import binding as llvm
+
+llvm.initialize_native_target()
+llvm.initialize_native_asmprinter()
+module = llvm.parse_assembly({asm_inlineasm3!r}.format(
+    triple=llvm.get_default_triple(),
+))
+target = llvm.Target.from_default_triple()
+machine = target.create_target_machine(jit=True)
+with llvm.create_mcjit_compiler(module, machine) as engine:
+    assert engine.enable_jit_events()
+    engine.finalize_object()
+    assert engine.get_function_address('foo')
+"""
+        with TemporaryDirectory() as directory:
+            env = os.environ.copy()
+            package_root = os.path.abspath(os.path.join(
+                os.path.dirname(llvm.__file__), os.pardir, os.pardir,
+            ))
+            pythonpath = [package_root]
+            if env.get('PYTHONPATH'):
+                pythonpath.append(env['PYTHONPATH'])
+            env['PYTHONPATH'] = os.pathsep.join(pythonpath)
+            env['JITDUMPDIR'] = directory
+            subprocess.run(
+                [sys.executable, '-c', script],
+                check=True,
+                capture_output=True,
+                env=env,
+                text=True,
+                timeout=60,
+            )
+            dumps = [
+                os.path.join(root, name)
+                for root, _, names in os.walk(directory)
+                for name in names
+                if name.startswith('jit-') and name.endswith('.dump')
+            ]
+            self.assertEqual(len(dumps), 1)
+            with open(dumps[0], 'rb') as dump:
+                data = dump.read()
+
+        byte_order = '<' if sys.byteorder == 'little' else '>'
+        file_header = struct.Struct(byte_order + 'IIIIIIQQ')
+        record_header = struct.Struct(byte_order + 'IIQ')
+        code_load = struct.Struct(byte_order + 'IIQQQQ')
+        debug_info = struct.Struct(byte_order + 'QQ')
+        debug_entry = struct.Struct(byte_order + 'QII')
+
+        self.assertGreaterEqual(len(data), file_header.size)
+        magic, version, header_size, *_ = file_header.unpack_from(data)
+        self.assertEqual(magic, 0x4A695444)
+        self.assertEqual(version, 1)
+        self.assertGreaterEqual(header_size, file_header.size)
+        self.assertLessEqual(header_size, len(data))
+
+        loads = []
+        debug_records = []
+        offset = header_size
+        while offset < len(data):
+            self.assertGreaterEqual(len(data) - offset, record_header.size)
+            record_id, record_size, _ = record_header.unpack_from(data, offset)
+            self.assertGreaterEqual(record_size, record_header.size)
+            record_end = offset + record_size
+            self.assertLessEqual(record_end, len(data))
+            fixed_offset = offset + record_header.size
+
+            if record_id == 0:  # JIT_CODE_LOAD
+                self.assertGreaterEqual(
+                    record_size,
+                    record_header.size + code_load.size + 1,
+                )
+                _, _, _, address, size, _ = code_load.unpack_from(
+                    data, fixed_offset,
+                )
+                name_offset = fixed_offset + code_load.size
+                name_end = data.index(b'\x00', name_offset, record_end)
+                code_offset = name_end + 1
+                self.assertEqual(record_end - code_offset, size)
+                loads.append({
+                    'offset': offset,
+                    'address': address,
+                    'name': data[name_offset:name_end].decode(),
+                })
+            elif record_id == 2:  # JIT_CODE_DEBUG_INFO
+                self.assertGreaterEqual(
+                    record_size,
+                    record_header.size + debug_info.size,
+                )
+                address, count = debug_info.unpack_from(data, fixed_offset)
+                entry_offset = fixed_offset + debug_info.size
+                entries = []
+                for _ in range(count):
+                    self.assertGreaterEqual(
+                        record_end - entry_offset, debug_entry.size + 1,
+                    )
+                    line_address, line, discriminator = (
+                        debug_entry.unpack_from(data, entry_offset)
+                    )
+                    entry_offset += debug_entry.size
+                    filename_end = data.index(
+                        b'\x00', entry_offset, record_end,
+                    )
+                    filename = data[entry_offset:filename_end].decode()
+                    entry_offset = filename_end + 1
+                    entries.append(
+                        (line_address, line, discriminator, filename),
+                    )
+                self.assertEqual(entry_offset, record_end)
+                debug_records.append({
+                    'offset': offset,
+                    'address': address,
+                    'entries': entries,
+                })
+            offset = record_end
+
+        self.assertEqual(offset, len(data))
+        foo_loads = [record for record in loads if record['name'] == 'foo']
+        self.assertEqual(len(foo_loads), 1)
+        foo_load = foo_loads[0]
+        foo_debug_records = [
+            record for record in debug_records
+            if record['address'] == foo_load['address']
+        ]
+        self.assertEqual(len(foo_debug_records), 1)
+        foo_debug = foo_debug_records[0]
+        self.assertLess(foo_debug['offset'], foo_load['offset'])
+        source_lines = {
+            line for _, line, _, filename in foo_debug['entries']
+            if os.path.basename(filename) == 'test.c'
+        }
+        self.assertIn(5, source_lines)
 
 
 # There are some memory corruption issues with OrcJIT on AArch64 - see Issue
@@ -3175,6 +3317,9 @@ class TestBuild(TestCase):
         info = llvm.config.get_sysinfo()
         self.assertEqual(info['llvm_linkage_type'], "static")
         self.assertEqual(info['llvm_assertions_state'], "on")
+        if sys.platform.startswith('linux'):
+            self.assertTrue(info['has_perf_jit_events'])
+
         self.check_linkage(info, "wheel")
 
     @is_conda_package
@@ -3184,6 +3329,8 @@ class TestBuild(TestCase):
         self.assertEqual(info['llvm_assertions_state'], "on")
 
         self.check_linkage(info, "conda")
+        if sys.platform.startswith('linux'):
+            self.assertTrue(info['has_perf_jit_events'])
         if platform.system().lower() == "linux":
             self.assertEqual(info['libstdcxx_linkage_type'], "static")
 

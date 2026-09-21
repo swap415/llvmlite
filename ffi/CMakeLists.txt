@@ -261,7 +261,7 @@ else()
     # archive libLLVMIntelJITEvents.a. There are some "special"
     # pseudo-components that have much broader expansions but it's unlikely
     # these will be encountered.
-    set(LLVM_BUILD_SPECIFIC_COMPONENTS IntelJITEvents)
+    set(LLVM_BUILD_SPECIFIC_COMPONENTS IntelJITEvents PerfJITEvents)
 
     # This function checks for whether a specific LLVM component can be linked
     function(check_optional_component COMPONENT CURRENT_COMPONENTS)
