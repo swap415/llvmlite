@@ -1,5 +1,6 @@
 #include "core.h"
 #include "llvm-c/TargetMachine.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Analysis/AliasAnalysisEvaluator.h"
 #include "llvm/Analysis/AliasSetTracker.h"
 #include "llvm/Analysis/AssumptionCache.h"
@@ -272,7 +273,35 @@ static OptimizationLevel mapLevel(int speed_level) {
     }
 }
 
+static void registerTargetLibraryInfo(FunctionAnalysisManager &FAM,
+                                      const Module &M, int VecLib) {
+    if (VecLib < 0)
+        return;
+    TargetLibraryInfoImpl TLII(M.getTargetTriple(),
+                              static_cast<VectorLibrary>(VecLib));
+    FAM.registerPass([&] {
+        return TargetLibraryAnalysis(TLII);
+    });
+}
+
 extern "C" {
+
+API_EXPORT(int)
+LLVMPY_ParseVectorLibrary(const char *Name) {
+    auto Library =
+        StringSwitch<std::optional<VectorLibrary>>(Name)
+            .Case("none", VectorLibrary::NoLibrary)
+            .Case("accelerate", VectorLibrary::Accelerate)
+            .Case("darwin_libsystem_m", VectorLibrary::DarwinLibSystemM)
+            .Case("libmvec", VectorLibrary::LIBMVEC)
+            .Case("massv", VectorLibrary::MASSV)
+            .Case("svml", VectorLibrary::SVML)
+            .Case("sleefgnuabi", VectorLibrary::SLEEFGNUABI)
+            .Case("armpl", VectorLibrary::ArmPL)
+            .Case("amdlibm", VectorLibrary::AMDLIBM)
+            .Default(std::nullopt);
+    return Library ? static_cast<int>(*Library) : -1;
+}
 
 API_EXPORT(void)
 LLVMPY_SetTimePasses(bool enable) { TimePassesIsEnabled = enable; }
@@ -295,7 +324,8 @@ LLVMPY_CreateNewModulePassManager() {
 
 API_EXPORT(void)
 LLVMPY_RunNewModulePassManager(LLVMModulePassManagerRef MPMRef,
-                               LLVMModuleRef mod, LLVMPassBuilderRef PBRef) {
+                               LLVMModuleRef mod, LLVMPassBuilderRef PBRef,
+                               int VecLib) {
 
     ModulePassManager *MPM = llvm::unwrap(MPMRef);
     Module *M = llvm::unwrap(mod);
@@ -352,6 +382,7 @@ LLVMPY_RunNewModulePassManager(LLVMModulePassManagerRef MPMRef,
         TP.setOutStream(os);
     }
 
+    registerTargetLibraryInfo(FAM, *M, VecLib);
     PB->registerLoopAnalyses(LAM);
     PB->registerFunctionAnalyses(FAM);
     PB->registerCGSCCAnalyses(CGAM);
@@ -381,7 +412,8 @@ LLVMPY_CreateNewFunctionPassManager() {
 
 API_EXPORT(void)
 LLVMPY_RunNewFunctionPassManager(LLVMFunctionPassManagerRef FPMRef,
-                                 LLVMValueRef FRef, LLVMPassBuilderRef PBRef) {
+                                 LLVMValueRef FRef, LLVMPassBuilderRef PBRef,
+                                 int VecLib) {
 
     FunctionPassManager *FPM = llvm::unwrap(FPMRef);
     Function *F = reinterpret_cast<Function *>(FRef);
@@ -419,6 +451,7 @@ LLVMPY_RunNewFunctionPassManager(LLVMFunctionPassManagerRef FPMRef,
         TP.setOutStream(os);
     }
 
+    registerTargetLibraryInfo(FAM, *F->getParent(), VecLib);
     PB->registerLoopAnalyses(LAM);
     PB->registerFunctionAnalyses(FAM);
     PB->registerCGSCCAnalyses(CGAM);
