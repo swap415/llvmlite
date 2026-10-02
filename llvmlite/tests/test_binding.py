@@ -427,12 +427,12 @@ asm_null_constant = r"""
 
 riscv_asm_ilp32 = [
     'addi\tsp, sp, -16',
+    'fmv.w.x\tfa5, a0',
     'sw\ta1, 8(sp)',
     'sw\ta2, 12(sp)',
-    'fld\tfa5, 8(sp)',
-    'fmv.w.x\tfa4, a0',
-    'fcvt.d.s\tfa4, fa4',
-    'fadd.d\tfa5, fa4, fa5',
+    'fld\tfa4, 8(sp)',
+    'fcvt.d.s\tfa5, fa5',
+    'fadd.d\tfa5, fa5, fa4',
     'fsd\tfa5, 8(sp)',
     'lw\ta0, 8(sp)',
     'lw\ta1, 12(sp)',
@@ -912,7 +912,7 @@ class TestMisc(BaseTest):
     def test_version(self):
         major, minor, patch = llvm.llvm_version_info
         # one of these can be valid
-        valid = (22,)
+        valid = (23,)
         self.assertIn(major, valid)
         self.assertIn(patch, range(9))
 
@@ -2841,7 +2841,6 @@ class TestNewModulePassManager(BaseTest, NewPassManagerMixin):
         mpm.add_lower_invoke_pass()
         mpm.add_lower_switch_pass()
         mpm.add_mem_copy_opt_pass()
-        mpm.add_unify_function_exit_nodes_pass()
         mpm.add_reassociate_pass()
         mpm.add_register_to_memory_pass()
         mpm.add_sroa_pass()
@@ -2950,7 +2949,6 @@ class TestNewFunctionPassManager(BaseTest, NewPassManagerMixin):
         fpm.add_lower_invoke_pass()
         fpm.add_lower_switch_pass()
         fpm.add_mem_copy_opt_pass()
-        fpm.add_unify_function_exit_nodes_pass()
         fpm.add_reassociate_pass()
         fpm.add_register_to_memory_pass()
         fpm.add_sroa_pass()

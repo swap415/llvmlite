@@ -28,6 +28,7 @@ class TypeKind(enum.IntEnum):
     scalable_vector = 17
     bfloat = 18
     x86_amx = 19
+    byte = 21
 
 
 _TypeKindToIRType = {

@@ -83,12 +83,14 @@ LLVMPY_CreateLLJITCompiler(LLVMTargetMachineRef tm, bool suppressErrors,
                 .setOptions(template_tm->Options));
     }
     builder.setObjectLinkingLayerCreator(
-        [=](llvm::orc::ExecutionSession &session)
+        [=](llvm::orc::ExecutionSession &session,
+            llvm::jitlink::JITLinkMemoryManager &memoryManager)
             -> llvm::Expected<std::unique_ptr<llvm::orc::ObjectLayer>> {
             auto triple = session.getTargetTriple();
             if (useJitLink) {
                 auto linkingLayer =
-                    std::make_unique<llvm::orc::ObjectLinkingLayer>(session);
+                    std::make_unique<llvm::orc::ObjectLinkingLayer>(
+                        session, memoryManager);
 
                 /* FIXME(LLVM16): In newer LLVM versions, there is a simple
                  * EnableDebugSupport flag on the builder and we don't need to

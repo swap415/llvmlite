@@ -69,15 +69,16 @@ class ValueKind(enum.IntEnum):
     constant_data_array = 16
     constant_data_vector = 17
     constant_int = 18
-    constant_fp = 19
-    constant_pointer_null = 20
-    constant_token_none = 21
+    constant_byte = 19
+    constant_fp = 20
+    constant_pointer_null = 21
+    constant_token_none = 22
 
-    metadata_as_value = 22
-    inline_asm = 23
+    metadata_as_value = 23
+    inline_asm = 24
 
-    instruction = 24
-    poison_value = 25
+    instruction = 25
+    poison_value = 26
 
 
 class ValueRef(ffi.ObjectRef):
@@ -355,6 +356,10 @@ class ValueRef(ffi.ObjectRef):
         if not self.is_constant:
             raise ValueError('expected constant value, got %s'
                              % (self._kind,))
+
+        # LLVM 23 also represents FP and pointer splats as scalar value kinds.
+        if self.type.is_vector:
+            return str(self)
 
         if self.value_kind == ValueKind.constant_int:
             # Python integers are also arbitrary-precision
