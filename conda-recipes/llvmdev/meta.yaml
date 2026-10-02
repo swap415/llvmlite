@@ -1,7 +1,7 @@
-{% set shortversion = "22.1" %}
-{% set version = "22.1.0" %}
-{% set sha256_llvm = "25d2e2adc4356d758405dd885fcfd6447bce82a90eb78b6b87ce0934bd077173" %}
-{% set build_number = "2" %}
+{% set shortversion = "23.1" %}
+{% set version = "23.1.2" %}
+{% set sha256_llvm = "c98bbef08a2b4c2613cd50e9aa9ae7b69b1fe6c16b2c40373bc0ab6116fdf78a" %}
+{% set build_number = "0" %}
 
 package:
   name: llvmdev
@@ -11,8 +11,6 @@ source:
   - url: https://github.com/llvm/llvm-project/releases/download/llvmorg-{{ version.replace(".rc", "-rc") }}/llvm-project-{{ version.replace(".rc", "rc") }}.src.tar.xz
     sha256: {{ sha256_llvm }}
     patches:
-    # Drop on LLVM upgrade that carries PR #204347 (LLVM 23)
-    - ../llvm22-aarch64-windows-target-detection.patch
     - ../llvm22-aarch64-oryon-sched-model.patch
     # - ../llvm15-remove-use-of-clonefile.patch
     # - ../llvm15-svml.patch
