@@ -297,12 +297,6 @@ class NewPassManager():
         else:
             ffi.lib.LLVMPY_function_AddMemCpyOptPass(self)
 
-    def add_unify_function_exit_nodes_pass(self):
-        if isinstance(self, ModulePassManager):
-            ffi.lib.LLVMPY_module_AddUnifyFunctionExitNodesPass(self)
-        else:
-            ffi.lib.LLVMPY_function_AddUnifyFunctionExitNodesPass(self)
-
     def add_reassociate_pass(self):
         if isinstance(self, ModulePassManager):
             ffi.lib.LLVMPY_module_AddReassociatePass(self)
@@ -713,9 +707,6 @@ ffi.lib.LLVMPY_module_AddLowerSwitchPass.argtypes = [
 ffi.lib.LLVMPY_module_AddMemCpyOptPass.argtypes = [
     ffi.LLVMModulePassManagerRef,]
 
-ffi.lib.LLVMPY_module_AddUnifyFunctionExitNodesPass.argtypes = [
-    ffi.LLVMModulePassManagerRef,]
-
 ffi.lib.LLVMPY_module_AddReassociatePass.argtypes = [
     ffi.LLVMModulePassManagerRef,]
 
@@ -901,9 +892,6 @@ ffi.lib.LLVMPY_function_AddLowerSwitchPass.argtypes = [
     ffi.LLVMFunctionPassManagerRef, ]
 
 ffi.lib.LLVMPY_function_AddMemCpyOptPass.argtypes = [
-    ffi.LLVMFunctionPassManagerRef, ]
-
-ffi.lib.LLVMPY_function_AddUnifyFunctionExitNodesPass.argtypes = [
     ffi.LLVMFunctionPassManagerRef, ]
 
 ffi.lib.LLVMPY_function_AddReassociatePass.argtypes = [
